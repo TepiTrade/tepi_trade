@@ -1,1 +1,2 @@
+web: gunicorn aplicativo:app
 
