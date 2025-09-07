@@ -1,35 +1,19 @@
-from flask import Flask, request
+from flask import Flask, render_template
 
 app = Flask(__name__)
 
-@app.route("/ping")
-def ping():
-    return "pong"
+@app.route('/')
+def painel():
+    return render_template('index.html')
 
-@app.route("/")
-def home():
-    return "🚀 IA_NET rodando com sucesso no Render!"
+@app.route('/bot/sinais')
+def sinais():
+    return render_template('sinais.html')
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    data = request.get_json()
-    pergunta = data.get("mensagem", "")
-    resposta = f"Você perguntou: {pergunta}. Resposta: sempre a verdade simples!"
-    return {"resposta": resposta}
+@app.route('/bot/automatico')
+def automatico():
+    return render_template('automatico.html')
 
-from flask_cors import CORS
-import signal, sys
-
-# habilita CORS para toda a API
-CORS(app)
-
-# graceful shutdown
-def handle_exit(sig, frame):
-    print("🛑 Encerrando servidor com segurança...")
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, handle_exit)
-signal.signal(signal.SIGTERM, handle_exit)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+@app.route('/bot/cripto')
+def cripto():
+    return render_template('cripto.html')
