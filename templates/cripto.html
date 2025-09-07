@@ -1,1 +1,129 @@
-﻿<h1>Painel Bot Criptomoedas</h1>
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Painel Bot Criptomoedas</title>
+  <style>
+    body {
+      background-color: #0d1117;
+      color: #e6edf3;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 30px;
+    }
+    h1 {
+      color: gold;
+      text-shadow: 0 0 10px #ffcc00, 0 0 20px #ffaa00;
+    }
+    .container {
+      margin-top: 20px;
+    }
+    label, select {
+      font-size: 16px;
+      margin: 5px;
+    }
+    .btn-gold {
+      display: inline-block;
+      padding: 12px 24px;
+      margin-top: 20px;
+      font-size: 18px;
+      font-weight: bold;
+      color: #000;
+      background: linear-gradient(45deg, #FFD700, #FFA500);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 0 10px gold, 0 0 20px orange;
+      transition: transform 0.2s;
+    }
+    .btn-gold:hover {
+      transform: scale(1.05);
+    }
+    table {
+      margin: 20px auto;
+      border-collapse: collapse;
+      width: 80%;
+      background: #161b22;
+      color: #e6edf3;
+    }
+    th, td {
+      border: 1px solid #30363d;
+      padding: 12px;
+    }
+    th {
+      background: #21262d;
+      color: gold;
+    }
+    .buy { color: #00ff00; font-weight: bold; }
+    .sell { color: #ff3333; font-weight: bold; }
+    .neutral { color: #ffaa00; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>🚀 Painel Bot Criptomoedas</h1>
+
+  <div class="container">
+    <label for="exchange">Corretora:</label>
+    <select id="exchange">
+      <option value="binance">Binance</option>
+      <option value="bybit">Bybit</option>
+      <option value="okx">OKX</option>
+    </select>
+
+    <label for="timeframe">Vela/Tempo:</label>
+    <select id="timeframe">
+      <option value="1m">1m</option>
+      <option value="3m">3m</option>
+      <option value="5m">5m</option>
+      <option value="15m">15m</option>
+      <option value="30m" selected>30m</option>
+      <option value="1h">1h</option>
+      <option value="2h">2h</option>
+      <option value="4h">4h</option>
+      <option value="1d">1d</option>
+    </select>
+  </div>
+
+  <a href="#" id="openChart" target="_blank" class="btn-gold">📈 Abrir Gráfico</a>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Ativo</th>
+        <th>Sinal</th>
+        <th>Entrada</th>
+        <th>% do saldo</th>
+        <th>Horário</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>BTC/USDT</td>
+        <td class="buy">COMPRA</td>
+        <td>–</td>
+        <td>35%</td>
+        <td>16:30</td>
+      </tr>
+      <tr>
+        <td>ETH/USDT</td>
+        <td class="sell">VENDA</td>
+        <td>–</td>
+        <td>20%</td>
+        <td>16:32</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <script>
+    document.getElementById('openChart').addEventListener('click', function(){
+      const ex = document.getElementById('exchange').value;
+      const tf = document.getElementById('timeframe').value;
+      const sym = "BTCUSDT"; 
+      const map = {binance:"BINANCE", bybit:"BYBIT", okx:"OKX"};
+      this.href = `https://www.tradingview.com/chart/?symbol=${map[ex]}:${sym}&interval=${tf}`;
+    });
+  </script>
+</body>
+</html>
+
