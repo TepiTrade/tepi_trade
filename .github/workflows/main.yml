@@ -1,0 +1,25 @@
+name: tepi_trade CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [principal, main]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requisitos.txt ]; then pip install -r requisitos.txt; fi
+      - name: Executar aplicativo
+        env:
+          WC_CK: ${{ secrets.WC_CK }}
+          WC_CS: ${{ secrets.WC_CS }}
+        run: |
+          python aplicativo.py
