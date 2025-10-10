@@ -1,4 +1,4 @@
-import os, csv, io, requests, html
+import os, csv, io, requests, html, re
 
 WC_URL  = os.environ.get("WC_URL","").rstrip("/")
 WC_CK   = os.environ.get("WC_CK","")
@@ -18,56 +18,89 @@ def find_product_by_name(name):
     r = api("GET", "/products", params={"search": name, "per_page": 1})
     return r[0] if r else None
 
-def ensure_category(name):
-    q = api("GET", "/products/categories", params={"search": name, "per_page": 1})
-    if q and q[0]["name"].lower() == name.lower():
-        return {"id": q[0]["id"]}
-    c = api("POST", "/products/categories", json={"name": name})
+def get_category_by_name(name, parent=0):
+    r = api("GET", "/products/categories",
+            params={"search": name, "per_page": 1, "parent": parent})
+    for c in r or []:
+        if c["name"].strip().lower() == name.strip().lower() and c["parent"] == parent:
+            return c
+    return None
+
+def ensure_category(name, parent=0):
+    c = get_category_by_name(name, parent)
+    if c: return {"id": c["id"]}
+    c = api("POST", "/products/categories", json={"name": name, "parent": parent})
     return {"id": c["id"]}
 
+def ensure_category_path(path_str):
+    """
+    Aceita: "Afiliados|Acessórios|Relógios" ou "Afiliados > Acessórios"
+    Cria hierarquia e retorna a última categoria.
+    """
+    parts = [p.strip() for p in re.split(r"[|>/]", path_str) if p.strip()]
+    if not parts: parts = [DEFAULT_CATEGORY]
+    parent_id = 0
+    last = None
+    for p in parts:
+        c = get_category_by_name(p, parent_id)
+        if not c:
+            c = api("POST", "/products/categories", json={"name": p, "parent": parent_id})
+        parent_id = c["id"]
+        last = c
+    return {"id": last["id"]}
+
 def ensure_categories(cell):
-    names = [x.strip() for x in (cell or "").split(",") if x.strip()]
-    if not names:
-        names = [DEFAULT_CATEGORY]
-    return [ensure_category(n) for n in names]
+    if not cell:
+        return [ensure_category(DEFAULT_CATEGORY)]
+    # divide por vírgula OU por ponto e vírgula
+    raw = []
+    for chunk in re.split(r"[;,]", cell):
+        chunk = chunk.strip()
+        if chunk: raw.append(chunk)
+    seen = set()
+    out = []
+    for token in raw:
+        # token pode ter hierarquia com | ou >
+        cat = ensure_category_path(token)
+        if cat["id"] not in seen:
+            out.append(cat); seen.add(cat["id"])
+    return out or [ensure_category(DEFAULT_CATEGORY)]
 
 def ensure_tag(name):
-    q = api("GET", "/products/tags", params={"search": name, "per_page": 1})
-    if q and q[0]["name"].lower() == name.lower():
-        return {"id": q[0]["id"]}
+    r = api("GET", "/products/tags", params={"search": name, "per_page": 1})
+    for t in r or []:
+        if t["name"].strip().lower() == name.strip().lower():
+            return {"id": t["id"]}
     t = api("POST", "/products/tags", json={"name": name})
     return {"id": t["id"]}
 
 def ensure_tags(cell):
-    names = [x.strip() for x in (cell or "").split(",") if x.strip()]
+    names = [x.strip() for x in re.split(r"[;,]", cell or "") if x.strip()]
     return [ensure_tag(n) for n in names]
 
 def parse_images(cell):
-    urls = [u.strip() for u in (cell or "").split(",") if u.strip()]
+    urls = [u.strip() for u in re.split(r"[,\s]+", cell or "") if u.strip().startswith("http")]
     return [{"src": u} for u in urls]
 
 def fallback_description(name):
     ce = f'[content-egg module="GoogleImages" keyword="{name}" limit="6"]'
-    txt = f"<p>{html.escape(name)} — oferta de parceiro. Clique em Comprar para ver detalhes na loja parceira.</p>\n\n{ce}"
-    return txt
+    return f"<p>{html.escape(name)} — oferta de parceiro. Clique em Comprar.</p>\n\n{ce}"
 
 def upsert(row):
     name  = (row.get("Name") or row.get("Nome") or "").strip()
-    if not name:
-        return
-    price = (row.get("Regular price") or "").strip()
+    if not name: return
+
+    price = (row.get("Regular price") or row.get("Preço") or "").strip()
     ext   = (row.get("External URL") or row.get("Link") or "").strip()
     btn   = (row.get("Button text") or "Comprar").strip()
     desc  = (row.get("Description") or "").strip()
     sdesc = (row.get("Short description") or "").strip()
     imgs  = parse_images(row.get("Images") or "")
-    cats  = ensure_categories(row.get("Categories") or "")
+    cats  = ensure_categories(row.get("Categories") or row.get("Categoria") or "")
     tags  = ensure_tags(row.get("Tags") or "")
 
-    if not desc:
-        desc = fallback_description(name)
-    if not sdesc:
-        sdesc = f"{name} — produto afiliado. Compare o preço e compre com segurança."
+    if not desc:  desc  = fallback_description(name)
+    if not sdesc: sdesc = f"{name} — produto afiliado. Compare o preço e compre com segurança."
 
     payload = {
         "name": name,
@@ -75,8 +108,8 @@ def upsert(row):
         "regular_price": price or None,
         "external_url": ext or None,
         "button_text": btn if ext else None,
-        "images": imgs,
-        "categories": cats,
+        "images": imgs,             # usa URLs do CSV para capa/galeria
+        "categories": cats,         # cria hierarquia se usar |
         "tags": tags,
         "description": html.unescape(desc),
         "short_description": html.unescape(sdesc),
