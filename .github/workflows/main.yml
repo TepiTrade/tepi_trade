@@ -1,5 +1,4 @@
 name: tepi_trade CI
-
 on:
   workflow_dispatch:
   push:
@@ -18,9 +17,11 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requisitos.txt ]; then pip install -r requisitos.txt; fi
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-      - name: Executar aplicativo
+      - name: Executar migração WooCommerce
         env:
+          WC_URL: ${{ secrets.WC_URL }}
           WC_CK: ${{ secrets.WC_CK }}
           WC_CS: ${{ secrets.WC_CS }}
+          CSV_URL: ${{ secrets.CSV_URL }}
         run: |
-          python aplicativo.py
+          python migrate_wc.py
