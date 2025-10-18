@@ -2,7 +2,7 @@ name: ingestao-continuada
 
 on:
   schedule:
-    - cron: "15 * * * *"
+    - cron: "15 * * * *"   # roda 15 min de cada hora
   workflow_dispatch:
 
 jobs:
@@ -14,12 +14,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Instalar deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests
-
       - name: Ingestão contínua
         env:
           WC_BASE: "https://ctctech.store"
@@ -27,160 +21,115 @@ jobs:
           WC_CS: ${{ secrets.WC_CS }}
         run: |
           python - <<'PY'
-          import os, re, time, json, random, hashlib, html, urllib.parse, sys
-          import requests
+          import os, re, time, json, random, html, urllib.parse, requests
 
-          WC_BASE = os.environ.get("WC_BASE","").rstrip("/")
-          CK = os.environ.get("WC_CK"); CS = os.environ.get("WC_CS")
-          assert WC_BASE and CK and CS
+          WC_BASE = os.environ["WC_BASE"].rstrip("/")
+          CK = os.environ["WC_CK"]
+          CS = os.environ["WC_CS"]
 
-          MAX_PER_RUN = 30
-          SEARCH_ENGINES = [
-            "https://r.jina.ai/http/https://www.bing.com/search?q=",
-            "https://r.jina.ai/http/https://html.duckduckgo.com/html/?q=",
-          ]
-          HDRS = [
-            {"User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36","Accept-Language":"pt-BR,pt;q=0.9"},
-            {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36","Accept-Language":"pt-BR,pt;q=0.9"},
-            {"User-Agent":"Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36","Accept-Language":"pt-BR,pt;q=0.9"},
-          ]
-          QUERIES = ["iphone 11","smartwatch","fone bluetooth","headset gamer","air fryer","cafeteira","smart tv 43","notebook","brinquedos educativos","vestido feminino","mochila escolar"]
-          DOMAINS = [r"amazon\.(com|com\.br|br)", r"mercadolivre\.com\.br", r"shopee\.(com|com\.br|br)", r"shein\.(com|com\.br|br)"]
-          dom_re = re.compile(r"https?://[^\"'<> ]+", re.I)
+          UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121 Safari/537.36"
+          HDRS = [{"User-Agent": UA, "Accept-Language":"pt-BR,pt;q=0.9"}]
 
-          SEED = [
-            "https://www.amazon.com.br/dp/B09G3HRMVB",
-            "https://www.amazon.com.br/dp/B0B2K8X1B1",
-            "https://www.mercadolivre.com.br/p/MLB19506578",
+          QUERIES = [
+            "produto afiliado eletrônico", "headset gamer", "smartwatch promoção",
+            "fone bluetooth tws", "mini projetor", "caixa de som portátil"
           ]
 
-          def good(u: str) -> bool:
+          DOMAINS = [r"amazon\.(com|com\.br)", r"mercadolivre\.(com|com\.br)",
+                     r"shopee\.(com|com\.br)", r"shein\.(com|com\.br)"]
+          dom_re = re.compile(r"https?://[^\s\"'<>\)]+", re.I)
+
+          def good(u:str)->bool:
             u = u.lower()
-            if any(x in u for x in ["accounts.","login","cart","checkout","track","seller","support","help","mailto:"]):
-              return False
+            bad = ["accounts.","login","cart","checkout","track","seller","support","help","mailto:"]
+            if any(b in u for b in bad): return False
             return any(re.search(d,u) for d in DOMAINS)
 
-          def search_links(q: str):
+          def search_links(q:str):
             out=[]
-            for base in SEARCH_ENGINES:
-              url = base + urllib.parse.quote(q)
+            for engine in ["https://www.bing.com/search?q=","https://www.google.com/search?q="]:
+              url = engine + urllib.parse.quote(q + " site:amazon.com.br OR site:mercadolivre.com.br OR site:shopee.com.br OR site:shein.com")
               try:
-                r = requests.get(url, headers=random.choice(HDRS), timeout=25)
-                if r.status_code!=200 or not r.text: continue
-                for h in re.findall(r'href="([^"]+)"', r.text):
-                  h = html.unescape(h)
-                  if not h.startswith("http"): continue
-                  for u in re.findall(dom_re, h):
-                    if good(u): out.append(u)
-              except: pass
-              time.sleep(0.6)
-            return out
+                r = requests.get(url, headers=HDRS[0], timeout=20)
+                for m in dom_re.findall(r.text):
+                  if good(m): out.append(m)
+              except Exception: pass
+              time.sleep(1.0)
+            return list(dict.fromkeys(out))
 
-          def absolutize(base, src):
+          def fetch_meta(u:str):
             try:
-              return urllib.parse.urljoin(base, src)
-            except:
-              return src
-
-          def first_image(html_text, page_url):
-            # og:image
-            m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html_text, re.I)
-            if m:
-              u = html.unescape(m.group(1))
-              if u: return absolutize(page_url, u)
-            # amazon hints
-            m = re.search(r'data-old-hires=["\']([^"\']+)["\']', html_text, re.I)
-            if m:
-              return absolutize(page_url, html.unescape(m.group(1)))
-            # <img ... src= or data-src=
-            for attr in ("src","data-src","data-original"):
-              for im in re.findall(rf'<img[^>]+{attr}=["\']([^"\']+)["\']', html_text, re.I):
-                im = html.unescape(im)
-                if not im: continue
-                im = absolutize(page_url, im)
-                low = im.lower()
-                if low.startswith("data:"): continue
-                if any(x in low for x in ["/sprite","/logo","/icon","1x1","pixel"]): continue
-                if not re.match(r"^https?://", im): continue
-                return im
-            return None
-
-          def fetch_meta(u: str):
-            try:
-              r = requests.get("https://r.jina.ai/http/"+u, headers=random.choice(HDRS), timeout=25, allow_redirects=True)
-            except:
+              r = requests.get(u, headers=HDRS[0], timeout=30)
+              t = r.text
+            except Exception:
               return {}
-            if r.status_code>=400 or not r.text: return {}
-            t = r.text
-            def meta(name):
-              m = re.search(rf'<meta[^>]+property=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
-              if not m:
-                m = re.search(rf'<meta[^>]+name=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
-              return html.unescape(m.group(1)) if m else None
-            title = meta("og:title")
+            def find(rex, default=""):
+              m = re.search(rex, t, re.I|re.S)
+              return html.unescape(m.group(1)).strip() if m else default
+
+            title = find(r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']')
             if not title:
-              m = re.search(r"<title[^>]*>(.*?)</title>", t, re.I|re.S)
-              title = m.group(1).strip() if m else None
-            desc = meta("og:description") or ""
-            img = first_image(t, u)
-            price = None
-            m = re.search(r'product:price:amount["\'][^>]+content=["\']([\d\.,]+)["\']', t, re.I)
-            if m: price = m.group(1).replace(".", "").replace(",", ".")
-            return {"title": title, "image": img, "desc": desc.strip(), "price": price}
+              m = re.search(r"<title[^>]*>([^<]{3,120})</title>", t, re.I|re.S)
+              title = html.unescape(m.group(1)).strip() if m else ""
+            desc  = find(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)["\']')
+            price = ""
+            for rx in [r'content=["\']R\$\s*([0-9\.,]+)["\']', r'R\$\s*([0-9\.,]{3,})']:
+              m = re.search(rx, t, re.I)
+              if m: price = m.group(1); break
+            img   = find(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']')
 
-          def sku_from_url(u: str):
-            return "AFF-" + hashlib.sha1(u.encode("utf-8")).hexdigest()[:16].upper()
+            return {"title": title[:120], "description": desc[:800], "price": price, "image": img}
 
-          def create_product(u: str, meta: dict):
-            sku = sku_from_url(u)
-            name = (meta.get("title") or "Produto Afiliado").strip()[:200]
-            short = (meta.get("desc") or "").strip()[:400]
-            price = meta.get("price")
-            images = [{"src": meta["image"]}] if meta.get("image") else []
-            payload = {
-              "name": name, "type": "external", "status": "publish",
-              "regular_price": str(price) if price else "",
-              "external_url": u, "button_text": "Ver oferta",
-              "short_description": short, "sku": sku,
-              "images": images,
+          def create_product(src_url:str, meta:dict):
+            name = meta.get("title") or "Produto Afiliado"
+            desc = meta.get("description") or ""
+            img  = meta.get("image") or ""
+            data = {
+              "name": name,
+              "type": "external",
+              "status": "publish",
+              "regular_price": "",
+              "external_url": src_url,
+              "button_text": "Ver oferta",
+              "short_description": desc,
+              "categories": [{"id": 40}],  # ajuste se quiser
             }
-            url = f"{WC_BASE}/wp-json/wc/v3/products"
-            try:
-              r = requests.post(url, params={"consumer_key":CK,"consumer_secret":CS}, json=payload, timeout=30)
-              if r.status_code==201: return True
-              try: data = r.json()
-              except: data = {}
-              if r.status_code==400 and isinstance(data,dict) and "sku" in (data.get("message","").lower()):
-                return True
-              return False
-            except:
-              return False
+            if img:
+              data["images"] = [{"src": img}]
+            if meta.get("price"):
+              # WooCommerce espera número com ponto
+              p = meta["price"].replace(".","").replace(",",".")
+              try:
+                float(p)
+                data["regular_price"] = p
+              except: pass
 
-          created=0; seen=set()
-          try:
-            random.shuffle(QUERIES)
-            for q in QUERIES:
-              if created>=MAX_PER_RUN: break
-              links=[]
-              for site in ["amazon.com.br","mercadolivre.com.br","shopee.com.br","shein.com","shein.com.br"]:
-                links += search_links(f"site:{site} {q}")
-              for u in links:
-                if created>=MAX_PER_RUN: break
-                if u in seen: continue
-                seen.add(u)
-                meta = fetch_meta(u)
-                if create_product(u, meta):
-                  created+=1
-                time.sleep(random.uniform(0.8,2.0))
-            if created==0:
-              for u in SEED:
-                if create_product(u, fetch_meta(u)):
-                  created+=1
-                  time.sleep(1.0)
-                if created>=3: break
-            print(json.dumps({"created_this_run":created,"attempted":len(seen)}, ensure_ascii=False))
-          except Exception as e:
-            print(json.dumps({"created_this_run":created,"attempted":len(seen),"error":str(e)}, ensure_ascii=False))
-          finally:
-            sys.exit(0)
+            try:
+              r = requests.post(
+                f"{WC_BASE}/wp-json/wc/v3/products",
+                auth=(CK, CS),
+                headers={"User-Agent": UA, "Content-Type":"application/json"},
+                data=json.dumps(data), timeout=40)
+              return r.status_code in (200,201), r.text
+            except Exception as e:
+              return False, str(e)
+
+          random.shuffle(QUERIES)
+          max_per_run = 5
+          created = 0
+          seen=set()
+
+          for q in QUERIES:
+            links = search_links(q)
+            for u in links:
+              if u in seen: continue
+              seen.add(u)
+              if created>=max_per_run: break
+              meta = fetch_meta(u)
+              ok, msg = create_product(u, meta)
+              if ok: created += 1
+              time.sleep(random.uniform(0.8, 1.8))
+            if created>=max_per_run: break
+
+          print(json.dumps({"created_this_run": created, "attempted": len(seen)}, ensure_ascii=False))
           PY
