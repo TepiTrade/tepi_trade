@@ -11,7 +11,6 @@ jobs:
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -31,10 +30,8 @@ jobs:
           import os, re, time, json, random, hashlib, html, urllib.parse, sys
           import requests
 
-          # --------- Config ---------
           WC_BASE = os.environ.get("WC_BASE","").rstrip("/")
-          CK = os.environ.get("WC_CK")
-          CS = os.environ.get("WC_CS")
+          CK = os.environ.get("WC_CK"); CS = os.environ.get("WC_CS")
           assert WC_BASE and CK and CS
 
           MAX_PER_RUN = 30
@@ -43,24 +40,14 @@ jobs:
             "https://r.jina.ai/http/https://html.duckduckgo.com/html/?q=",
           ]
           HDRS = [
-            {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36", "Accept-Language":"pt-BR,pt;q=0.9"},
-            {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36", "Accept-Language":"pt-BR,pt;q=0.9"},
-            {"User-Agent": "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36", "Accept-Language":"pt-BR,pt;q=0.9"},
+            {"User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36","Accept-Language":"pt-BR,pt;q=0.9"},
+            {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36","Accept-Language":"pt-BR,pt;q=0.9"},
+            {"User-Agent":"Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36","Accept-Language":"pt-BR,pt;q=0.9"},
           ]
-          QUERIES = [
-            "iphone 11", "smartwatch", "fone bluetooth", "headset gamer",
-            "air fryer", "cafeteira", "smart tv 43", "notebook",
-            "brinquedos educativos", "vestido feminino", "mochila escolar",
-          ]
-          DOMAINS = [
-            r"amazon\.(com|com\.br|br)",
-            r"mercadolivre\.com\.br",
-            r"shopee\.(com|com\.br|br)",
-            r"shein\.(com|com\.br|br)",
-          ]
+          QUERIES = ["iphone 11","smartwatch","fone bluetooth","headset gamer","air fryer","cafeteira","smart tv 43","notebook","brinquedos educativos","vestido feminino","mochila escolar"]
+          DOMAINS = [r"amazon\.(com|com\.br|br)", r"mercadolivre\.com\.br", r"shopee\.(com|com\.br|br)", r"shein\.(com|com\.br|br)"]
           dom_re = re.compile(r"https?://[^\"'<> ]+", re.I)
 
-          # Fallbacks para garantir criação mesmo se busca falhar
           SEED = [
             "https://www.amazon.com.br/dp/B09G3HRMVB",
             "https://www.amazon.com.br/dp/B0B2K8X1B1",
@@ -69,9 +56,9 @@ jobs:
 
           def good(u: str) -> bool:
             u = u.lower()
-            if any(x in u for x in ["accounts.", "login", "cart", "checkout", "track", "seller", "support", "help", "mailto:"]): 
+            if any(x in u for x in ["accounts.","login","cart","checkout","track","seller","support","help","mailto:"]):
               return False
-            return any(re.search(d, u) for d in DOMAINS)
+            return any(re.search(d,u) for d in DOMAINS)
 
           def search_links(q: str):
             out=[]
@@ -79,27 +66,51 @@ jobs:
               url = base + urllib.parse.quote(q)
               try:
                 r = requests.get(url, headers=random.choice(HDRS), timeout=25)
-                if r.status_code!=200 or not r.text:
-                  continue
+                if r.status_code!=200 or not r.text: continue
                 for h in re.findall(r'href="([^"]+)"', r.text):
                   h = html.unescape(h)
-                  if not h.startswith("http"): 
-                    continue
+                  if not h.startswith("http"): continue
                   for u in re.findall(dom_re, h):
-                    if good(u):
-                      out.append(u)
-              except Exception:
-                pass
+                    if good(u): out.append(u)
+              except: pass
               time.sleep(0.6)
             return out
+
+          def absolutize(base, src):
+            try:
+              return urllib.parse.urljoin(base, src)
+            except:
+              return src
+
+          def first_image(html_text, page_url):
+            # og:image
+            m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html_text, re.I)
+            if m:
+              u = html.unescape(m.group(1))
+              if u: return absolutize(page_url, u)
+            # amazon hints
+            m = re.search(r'data-old-hires=["\']([^"\']+)["\']', html_text, re.I)
+            if m:
+              return absolutize(page_url, html.unescape(m.group(1)))
+            # <img ... src= or data-src=
+            for attr in ("src","data-src","data-original"):
+              for im in re.findall(rf'<img[^>]+{attr}=["\']([^"\']+)["\']', html_text, re.I):
+                im = html.unescape(im)
+                if not im: continue
+                im = absolutize(page_url, im)
+                low = im.lower()
+                if low.startswith("data:"): continue
+                if any(x in low for x in ["/sprite","/logo","/icon","1x1","pixel"]): continue
+                if not re.match(r"^https?://", im): continue
+                return im
+            return None
 
           def fetch_meta(u: str):
             try:
               r = requests.get("https://r.jina.ai/http/"+u, headers=random.choice(HDRS), timeout=25, allow_redirects=True)
-            except Exception:
+            except:
               return {}
-            if r.status_code>=400 or not r.text: 
-              return {}
+            if r.status_code>=400 or not r.text: return {}
             t = r.text
             def meta(name):
               m = re.search(rf'<meta[^>]+property=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
@@ -110,12 +121,12 @@ jobs:
             if not title:
               m = re.search(r"<title[^>]*>(.*?)</title>", t, re.I|re.S)
               title = m.group(1).strip() if m else None
-            img = meta("og:image")
-            desc = meta("og:description")
+            desc = meta("og:description") or ""
+            img = first_image(t, u)
             price = None
             m = re.search(r'product:price:amount["\'][^>]+content=["\']([\d\.,]+)["\']', t, re.I)
             if m: price = m.group(1).replace(".", "").replace(",", ".")
-            return {"title": title, "image": img, "desc": desc, "price": price}
+            return {"title": title, "image": img, "desc": desc.strip(), "price": price}
 
           def sku_from_url(u: str):
             return "AFF-" + hashlib.sha1(u.encode("utf-8")).hexdigest()[:16].upper()
@@ -125,72 +136,51 @@ jobs:
             name = (meta.get("title") or "Produto Afiliado").strip()[:200]
             short = (meta.get("desc") or "").strip()[:400]
             price = meta.get("price")
-            images=[{"src": meta["image"]}] if meta.get("image") else []
+            images = [{"src": meta["image"]}] if meta.get("image") else []
             payload = {
-              "name": name,
-              "type": "external",
-              "status": "publish",
+              "name": name, "type": "external", "status": "publish",
               "regular_price": str(price) if price else "",
-              "external_url": u,
-              "button_text": "Ver oferta",
-              "short_description": short,
-              "sku": sku,
-              "categories": [],
+              "external_url": u, "button_text": "Ver oferta",
+              "short_description": short, "sku": sku,
               "images": images,
             }
             url = f"{WC_BASE}/wp-json/wc/v3/products"
             try:
-              r = requests.post(
-                url,
-                params={"consumer_key":CK, "consumer_secret":CS},
-                json=payload, timeout=30
-              )
-              if r.status_code==201:
-                return True
-              # se SKU já existe, conta como sucesso para ser idempotente
-              try:
-                data = r.json()
-              except Exception:
-                data = {}
-              if r.status_code==400 and isinstance(data, dict) and "sku" in (data.get("message","").lower()):
+              r = requests.post(url, params={"consumer_key":CK,"consumer_secret":CS}, json=payload, timeout=30)
+              if r.status_code==201: return True
+              try: data = r.json()
+              except: data = {}
+              if r.status_code==400 and isinstance(data,dict) and "sku" in (data.get("message","").lower()):
                 return True
               return False
-            except Exception:
+            except:
               return False
 
-          # --------- Execução protegida ---------
-          created=0
-          seen=set()
+          created=0; seen=set()
           try:
             random.shuffle(QUERIES)
             for q in QUERIES:
               if created>=MAX_PER_RUN: break
-              links = []
+              links=[]
               for site in ["amazon.com.br","mercadolivre.com.br","shopee.com.br","shein.com","shein.com.br"]:
                 links += search_links(f"site:{site} {q}")
               for u in links:
                 if created>=MAX_PER_RUN: break
-                if u in seen: 
-                  continue
+                if u in seen: continue
                 seen.add(u)
                 meta = fetch_meta(u)
                 if create_product(u, meta):
-                  created += 1
-                time.sleep(random.uniform(0.8, 2.0))
-
-            # Fallback se nada criado
+                  created+=1
+                time.sleep(random.uniform(0.8,2.0))
             if created==0:
               for u in SEED:
                 if create_product(u, fetch_meta(u)):
-                  created += 1
+                  created+=1
                   time.sleep(1.0)
-                if created>=3:
-                  break
-
-            print(json.dumps({"created_this_run": created, "attempted": len(seen)} , ensure_ascii=False))
+                if created>=3: break
+            print(json.dumps({"created_this_run":created,"attempted":len(seen)}, ensure_ascii=False))
           except Exception as e:
-            # Nunca falha o job
-            print(json.dumps({"created_this_run": created, "attempted": len(seen), "error": str(e)}, ensure_ascii=False))
+            print(json.dumps({"created_this_run":created,"attempted":len(seen),"error":str(e)}, ensure_ascii=False))
           finally:
             sys.exit(0)
           PY
