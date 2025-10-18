@@ -3,13 +3,12 @@ name: ingestao-continuada
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"  # a cada 15 min
+    - cron: "*/15 * * * *"
 
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 50
-
     steps:
       - uses: actions/checkout@v4
 
@@ -24,12 +23,13 @@ jobs:
 
       - name: Ingestão com imagem
         env:
-          WC_BASE: ${{ secrets.WC_BASE }}   # ex.: https://ctctech.store
+          WC_BASE: ${{ secrets.WC_BASE }}
           WC_CK:   ${{ secrets.WC_CK }}
           WC_CS:   ${{ secrets.WC_CS }}
         run: |
           python - <<'PY'
           import os, re, time, json, random, html, hashlib, urllib.parse, requests
+          from slugify import slugify
 
           BASE = os.environ["WC_BASE"].rstrip("/")
           CK   = os.environ["WC_CK"]
@@ -37,13 +37,13 @@ jobs:
 
           S = requests.Session()
           S.headers.update({
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36",
+            "User-Agent": "Mozilla/5.0",
             "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
           })
 
           ENGINES = [
             "https://www.bing.com/search?q=",
-            "https://duckduckgo.com/html/?q="
+            "https://duckduckgo.com/html/?q=",
           ]
           DOMAIN_OK = re.compile(r"(amazon\.com\.br|mercadolivre\.com\.br|shopee\.com\.br|shein\.com)", re.I)
           BAD_PATH = ("login","cart","checkout","track","seller","support","help","mailto:",
@@ -55,28 +55,23 @@ jobs:
             for eng in ENGINES:
               url = eng + urllib.parse.quote(q_full)
               try:
-                r = S.get(url, timeout=20)
-                r.raise_for_status()
+                r = S.get(url, timeout=20); r.raise_for_status()
               except Exception:
                 continue
               for u in re.findall(r'https?://[^"\'\s<>]+', r.text):
                 u = u.split("&")[0]
-                if not u.startswith("http"): 
-                  continue
-                if any(x in u for x in BAD_PATH): 
-                  continue
-                if DOMAIN_OK.search(u):
-                  out.append(u)
+                if not u.startswith("http"): continue
+                if any(x in u for x in BAD_PATH): continue
+                if DOMAIN_OK.search(u): out.append(u)
             seen,res=set(),[]
             for u in out:
               if u not in seen:
                 seen.add(u); res.append(u)
-            return res[:60]
+            return res[:50]
 
           def extract_meta(url: str):
             try:
-              r = S.get(url, timeout=25)
-              r.raise_for_status()
+              r = S.get(url, timeout=25); r.raise_for_status()
             except Exception:
               return None
             t = r.text
@@ -168,14 +163,12 @@ jobs:
             "notebook i5 8gb ssd",
             "mouse gamer rgb",
             "tv stick 4k",
-            "monitor 24 full hd",
-            "teclado mecânico rgb",
           ]
 
           random.shuffle(QUERIES)
           created = 0
           updated = 0
-          max_per_run = 12
+          max_per_run = 10
 
           for q in QUERIES:
             if created + updated >= max_per_run:
@@ -191,7 +184,7 @@ jobs:
                 created += 1
               elif result == "updated":
                 updated += 1
-              time.sleep(random.uniform(0.6, 1.4))
+              time.sleep(random.uniform(0.6, 1.6))
 
           print(json.dumps({"created": created, "updated": updated}, ensure_ascii=False))
           PY
