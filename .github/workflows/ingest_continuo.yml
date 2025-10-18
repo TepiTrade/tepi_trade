@@ -24,13 +24,13 @@ jobs:
 
       - name: Ingestão com imagem
         env:
-          WC_BASE: ${{ secrets.WC_BASE }}   # ex: https://ctctech.store
+          WC_BASE: ${{ secrets.WC_BASE }}   # ex.: https://ctctech.store
           WC_CK:   ${{ secrets.WC_CK }}
           WC_CS:   ${{ secrets.WC_CS }}
         run: |
           python - <<'PY'
           import os, re, time, json, random, html, hashlib, urllib.parse, requests
-          from slugify import slugify  # disponível se quiser usar
+          from slugify import slugify
 
           BASE = os.environ["WC_BASE"].rstrip("/")
           CK   = os.environ["WC_CK"]
@@ -43,50 +43,54 @@ jobs:
           })
 
           ENGINES = [
-            "https://duckduckgo.com/html/?q=",
             "https://www.bing.com/search?q=",
+            "https://duckduckgo.com/html/?q="
           ]
           DOMAIN_OK = re.compile(r"(amazon\.com\.br|mercadolivre\.com\.br|shopee\.com\.br|shein\.com)", re.I)
           BAD_PATH = ("login","cart","checkout","track","seller","support","help","mailto:",
                       "account","orders","wishlist")
 
           def search_links(q: str):
-            out = []
+            out=[]
+            q_full = f'{q} site:amazon.com.br OR site:mercadolivre.com.br OR site:shopee.com.br OR site:shein.com'
             for eng in ENGINES:
-              url = eng + urllib.parse.quote(q + " site:amazon.com.br OR site:mercadolivre.com.br OR site:shopee.com.br OR site:shein.com")
+              url = eng + urllib.parse.quote(q_full)
               try:
-                r = S.get(url, timeout=15)
+                r = S.get(url, timeout=20)
                 r.raise_for_status()
               except Exception:
                 continue
-              for u in re.findall(r'https?://[^"\']+', r.text):
+              for u in re.findall(r'https?://[^"\'\s<>]+', r.text):
                 u = u.split("&")[0]
                 if not u.startswith("http"): 
                   continue
                 if any(x in u for x in BAD_PATH): 
                   continue
-                if DOMAIN_OK.search(u): 
+                if DOMAIN_OK.search(u):
                   out.append(u)
-            seen, res = set(), []
+            seen,res=set(),[]
             for u in out:
               if u not in seen:
                 seen.add(u); res.append(u)
-            return res[:40]
+            return res[:50]
 
           def extract_meta(url: str):
             try:
-              r = S.get(url, timeout=20)
+              r = S.get(url, timeout=25)
               r.raise_for_status()
             except Exception:
               return None
             t = r.text
-            def m(prop):
+            def meta(prop):
               m = re.search(rf'<meta[^>]+property=["\']{prop}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
               if not m:
                 m = re.search(rf'<meta[^>]+name=["\']{prop}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
               return html.unescape(m.group(1).strip()) if m else ""
-            title = m("og:title") or m("twitter:title") or (re.search(r"<title>(.*?)</title>", t, re.I|re.S).group(1).strip() if re.search(r"<title>.*?</title>", t, re.I|re.S) else "")
-            img   = m("og:image") or m("twitter:image")
+            title = meta("og:title") or meta("twitter:title")
+            if not title:
+              m = re.search(r"<title>(.*?)</title>", t, re.I|re.S)
+              title = m.group(1).strip() if m else ""
+            img   = meta("og:image") or meta("twitter:image")
             price = ""
             mprice = re.search(r'content=["\']R?\$?\s?(\d{1,3}(?:[\.\s]\d{3})*(?:,\d{2})?)["\'][^>]+property=["\']product:price:amount["\']', t, re.I)
             if not mprice:
@@ -97,22 +101,42 @@ jobs:
               return None
             return {"title": title[:180], "image": img, "price": price}
 
-          def exists_by_sku(sku: str) -> bool:
+          def get_by_sku(sku: str):
             url = f"{BASE}/wp-json/wc/v3/products"
             try:
-              r = S.get(url, params={"sku": sku, "per_page": 1, "consumer_key": CK, "consumer_secret": CS}, timeout=15)
+              r = S.get(url, params={"sku": sku, "per_page":1,
+                                     "consumer_key":CK, "consumer_secret":CS}, timeout=20)
               r.raise_for_status()
-              return len(r.json()) > 0
+              arr = r.json()
+              if arr:
+                pid = arr[0]["id"]
+                imgs = arr[0].get("images") or []
+                return pid, (len(imgs)>0)
             except Exception:
-              return False
+              pass
+            return None, False
 
-          def create_product(meta, url):
+          def create_or_update_product(meta, url):
             title = meta["title"]
             img   = meta["image"]
             price = meta["price"] or "0"
             sku   = hashlib.md5(url.encode("utf-8")).hexdigest()[:12].upper()
-            if exists_by_sku(sku):
-              return False, "dup"
+
+            pid, has_img = get_by_sku(sku)
+            api = f"{BASE}/wp-json/wc/v3/products"
+
+            if pid and (not has_img) and img:
+              try:
+                r = S.put(f"{api}/{pid}",
+                          params={"consumer_key":CK, "consumer_secret":CS},
+                          json={"images":[{"src": img}]}, timeout=25)
+                r.raise_for_status()
+                return "updated"
+              except Exception:
+                return "error"
+
+            if pid:
+              return "skip"
 
             data = {
               "name": title,
@@ -127,40 +151,46 @@ jobs:
               "categories": [],
               "tags": [],
             }
-            api = f"{BASE}/wp-json/wc/v3/products"
             try:
-              r = S.post(api, params={"consumer_key": CK, "consumer_secret": CS},
+              r = S.post(api,
+                         params={"consumer_key":CK, "consumer_secret":CS},
                          json=data, timeout=25)
               r.raise_for_status()
-              return True, r.json().get("id")
-            except Exception as e:
-              return False, str(e)[:200]
+              return "created"
+            except Exception:
+              return "error"
 
           QUERIES = [
-            "produto afiliado eletrônico oferta",
+            "smartphone 128gb preço",
+            "smartwatch masculino promoção",
             "headset gamer bluetooth",
             "caixa de som portátil",
-            "mouse sem fio para notebook",
-            "smartwatch feminino",
+            "fone bluetooth tws",
+            "notebook i5 8gb ssd",
+            "mouse gamer rgb",
+            "tv stick 4k",
           ]
 
           random.shuffle(QUERIES)
           created = 0
+          updated = 0
           max_per_run = 10
 
           for q in QUERIES:
-            if created >= max_per_run:
+            if created + updated >= max_per_run:
               break
             for u in search_links(q):
-              if created >= max_per_run:
+              if created + updated >= max_per_run:
                 break
               meta = extract_meta(u)
               if not meta:
                 continue
-              ok, _ = create_product(meta, u)
-              if ok:
+              result = create_or_update_product(meta, u)
+              if result == "created":
                 created += 1
+              elif result == "updated":
+                updated += 1
               time.sleep(random.uniform(0.6, 1.6))
 
-          print(json.dumps({"created": created}, ensure_ascii=False))
+          print(json.dumps({"created": created, "updated": updated}, ensure_ascii=False))
           PY
