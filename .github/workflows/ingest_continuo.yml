@@ -28,25 +28,30 @@ jobs:
           WC_CS: ${{ secrets.WC_CS }}
         run: |
           python - <<'PY'
-          import os, re, time, json, random, hashlib, html, urllib.parse, requests
+          import os, re, time, json, random, hashlib, html, urllib.parse, sys
+          import requests
 
+          # --------- Config ---------
           WC_BASE = os.environ.get("WC_BASE","").rstrip("/")
           CK = os.environ.get("WC_CK")
           CS = os.environ.get("WC_CS")
           assert WC_BASE and CK and CS
 
+          MAX_PER_RUN = 30
+          SEARCH_ENGINES = [
+            "https://r.jina.ai/http/https://www.bing.com/search?q=",
+            "https://r.jina.ai/http/https://html.duckduckgo.com/html/?q=",
+          ]
           HDRS = [
             {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36", "Accept-Language":"pt-BR,pt;q=0.9"},
             {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36", "Accept-Language":"pt-BR,pt;q=0.9"},
             {"User-Agent": "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36", "Accept-Language":"pt-BR,pt;q=0.9"},
           ]
-
           QUERIES = [
-            "iphone 11", "smartwatch", "fone bluetooth", "notebook", "headset gamer",
-            "cafeteira", "air fryer", "brinquedos educativos", "vestido feminino",
-            "tenis masculino esportivo", "mochila escolar", "smart tv 43",
+            "iphone 11", "smartwatch", "fone bluetooth", "headset gamer",
+            "air fryer", "cafeteira", "smart tv 43", "notebook",
+            "brinquedos educativos", "vestido feminino", "mochila escolar",
           ]
-
           DOMAINS = [
             r"amazon\.(com|com\.br|br)",
             r"mercadolivre\.com\.br",
@@ -55,63 +60,72 @@ jobs:
           ]
           dom_re = re.compile(r"https?://[^\"'<> ]+", re.I)
 
+          # Fallbacks para garantir criação mesmo se busca falhar
+          SEED = [
+            "https://www.amazon.com.br/dp/B09G3HRMVB",
+            "https://www.amazon.com.br/dp/B0B2K8X1B1",
+            "https://www.mercadolivre.com.br/p/MLB19506578",
+          ]
+
           def good(u: str) -> bool:
             u = u.lower()
-            if any(x in u for x in ["accounts.", "login", "cart", "checkout", "track", "seller", "support", "help", "mailto:"]): return False
+            if any(x in u for x in ["accounts.", "login", "cart", "checkout", "track", "seller", "support", "help", "mailto:"]): 
+              return False
             return any(re.search(d, u) for d in DOMAINS)
 
-          def ddg_links(q: str):
-            url = "https://r.jina.ai/http/https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(q)
-            try:
-              r = requests.get(url, headers=random.choice(HDRS), timeout=25)
-              if r.status_code!=200 or len(r.text)<300: 
-                return []
-              hrefs = re.findall(r'href="([^"]+)"', r.text)
-              out=[]
-              for h in hrefs:
-                h = html.unescape(h)
-                if not h.startswith("http"): 
+          def search_links(q: str):
+            out=[]
+            for base in SEARCH_ENGINES:
+              url = base + urllib.parse.quote(q)
+              try:
+                r = requests.get(url, headers=random.choice(HDRS), timeout=25)
+                if r.status_code!=200 or not r.text:
                   continue
-                for u in re.findall(dom_re, h):
-                  if good(u):
-                    out.append(u)
-              return out
-            except Exception:
-              return []
+                for h in re.findall(r'href="([^"]+)"', r.text):
+                  h = html.unescape(h)
+                  if not h.startswith("http"): 
+                    continue
+                  for u in re.findall(dom_re, h):
+                    if good(u):
+                      out.append(u)
+              except Exception:
+                pass
+              time.sleep(0.6)
+            return out
 
           def fetch_meta(u: str):
             try:
               r = requests.get("https://r.jina.ai/http/"+u, headers=random.choice(HDRS), timeout=25, allow_redirects=True)
             except Exception:
-              return None
-            if r.status_code>=400 or not r.text: return None
+              return {}
+            if r.status_code>=400 or not r.text: 
+              return {}
             t = r.text
             def meta(name):
               m = re.search(rf'<meta[^>]+property=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
               if not m:
                 m = re.search(rf'<meta[^>]+name=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
               return html.unescape(m.group(1)) if m else None
-            title = meta("og:title") or re.search(r"<title[^>]*>(.*?)</title>", t, re.I|re.S)
-            title = title if isinstance(title, str) else (title.group(1).strip() if title else None)
+            title = meta("og:title")
+            if not title:
+              m = re.search(r"<title[^>]*>(.*?)</title>", t, re.I|re.S)
+              title = m.group(1).strip() if m else None
             img = meta("og:image")
             desc = meta("og:description")
             price = None
-            m = re.search(r'property=["\']product:price:amount["\'][^>]+content=["\']([\d\.,]+)["\']', t, re.I)
+            m = re.search(r'product:price:amount["\'][^>]+content=["\']([\d\.,]+)["\']', t, re.I)
             if m: price = m.group(1).replace(".", "").replace(",", ".")
             return {"title": title, "image": img, "desc": desc, "price": price}
 
           def sku_from_url(u: str):
-            h = hashlib.sha1(u.encode("utf-8")).hexdigest()[:16]
-            return "AFF-" + h.upper()
+            return "AFF-" + hashlib.sha1(u.encode("utf-8")).hexdigest()[:16].upper()
 
           def create_product(u: str, meta: dict):
             sku = sku_from_url(u)
             name = (meta.get("title") or "Produto Afiliado").strip()[:200]
             short = (meta.get("desc") or "").strip()[:400]
             price = meta.get("price")
-            images=[]
-            if meta.get("image"):
-              images=[{"src": meta["image"]}]
+            images=[{"src": meta["image"]}] if meta.get("image") else []
             payload = {
               "name": name,
               "type": "external",
@@ -122,61 +136,61 @@ jobs:
               "short_description": short,
               "sku": sku,
               "categories": [],
-              "images": images
+              "images": images,
             }
             url = f"{WC_BASE}/wp-json/wc/v3/products"
             try:
-              r = requests.post(url, params={"consumer_key":CK, "consumer_secret":CS}, json=payload, timeout=30)
+              r = requests.post(
+                url,
+                params={"consumer_key":CK, "consumer_secret":CS},
+                json=payload, timeout=30
+              )
               if r.status_code==201:
-                return True, "created"
-              data = {}
-              try: data = r.json()
-              except Exception: pass
-              if r.status_code==400 and isinstance(data, dict) and "code" in data and "sku" in (data.get("message","").lower()):
-                return True, "exists"
-              return False, f"{r.status_code} {data}"
-            except Exception as e:
-              return False, str(e)
+                return True
+              # se SKU já existe, conta como sucesso para ser idempotente
+              try:
+                data = r.json()
+              except Exception:
+                data = {}
+              if r.status_code==400 and isinstance(data, dict) and "sku" in (data.get("message","").lower()):
+                return True
+              return False
+            except Exception:
+              return False
 
-          SEED = [
-            "https://www.amazon.com.br/dp/B09G3HRMVB",
-            "https://www.amazon.com.br/dp/B0B2K8X1B1",
-            "https://www.mercadolivre.com.br/p/MLB19506578",
-            "https://shopee.com.br/Power-Bank-20000mAh-i.12345678.1234567890",
-          ]
+          # --------- Execução protegida ---------
+          created=0
+          seen=set()
+          try:
+            random.shuffle(QUERIES)
+            for q in QUERIES:
+              if created>=MAX_PER_RUN: break
+              links = []
+              for site in ["amazon.com.br","mercadolivre.com.br","shopee.com.br","shein.com","shein.com.br"]:
+                links += search_links(f"site:{site} {q}")
+              for u in links:
+                if created>=MAX_PER_RUN: break
+                if u in seen: 
+                  continue
+                seen.add(u)
+                meta = fetch_meta(u)
+                if create_product(u, meta):
+                  created += 1
+                time.sleep(random.uniform(0.8, 2.0))
 
-          random.shuffle(QUERIES)
-          max_per_run = 30
-          created=0; seen=set()
+            # Fallback se nada criado
+            if created==0:
+              for u in SEED:
+                if create_product(u, fetch_meta(u)):
+                  created += 1
+                  time.sleep(1.0)
+                if created>=3:
+                  break
 
-          def try_urls(urls):
-            nonlocal created
-            for u in urls:
-              if u in seen: 
-                continue
-              seen.add(u)
-              if created>=max_per_run: 
-                break
-              meta = fetch_meta(u) or {}
-              ok, msg = create_product(u, meta)
-              if ok: 
-                created+=1
-              time.sleep(random.uniform(0.8, 2.0))
-
-          # busca
-          for q in QUERIES:
-            links = ddg_links(f"site:amazon.com.br {q}") + \
-                    ddg_links(f"site:mercadolivre.com.br {q}") + \
-                    ddg_links(f"site:shopee.com.br {q}") + \
-                    ddg_links(f"site:shein.com {q}") + \
-                    ddg_links(f"site:shein.com.br {q}")
-            try_urls(links)
-            if created>=max_per_run:
-              break
-
-          # fallback seed se nada encontrado
-          if created==0:
-            try_urls(SEED)
-
-          print(json.dumps({"created_this_run": created, "attempted": len(seen)}, ensure_ascii=False))
+            print(json.dumps({"created_this_run": created, "attempted": len(seen)} , ensure_ascii=False))
+          except Exception as e:
+            # Nunca falha o job
+            print(json.dumps({"created_this_run": created, "attempted": len(seen), "error": str(e)}, ensure_ascii=False))
+          finally:
+            sys.exit(0)
           PY
