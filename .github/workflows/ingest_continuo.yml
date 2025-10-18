@@ -55,8 +55,7 @@ jobs:
             r"terabyteshop\.com\.br", r"pichau\.com\.br", r"fastshop\.com\.br",
             r"netshoes\.com\.br", r"centauro\.com\.br"
           ]
-          DOMAIN_OK = re.compile("(" + "|".join(DOMAINS) + ")", re.I)
-
+          DOMAIN_OK = re.compile(r"(amazon\.com\.br|mercadolivre\.com\.br|shopee\.com\.br|shein\.com|aliexpress\.com|magazineluiza\.com\.br|americanas\.com\.br|submarino\.com\.br|kabum\.com\.br|casasbahia\.com\.br)", re.I)
           BAD_PATH = (
             "login","cart","checkout","track","seller","support","help","mailto:",
             "account","orders","wishlist","entrar","minha-conta"
