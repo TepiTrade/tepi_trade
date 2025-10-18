@@ -2,7 +2,7 @@ name: ingestao-continuada
 
 on:
   schedule:
-    - cron: "15 * * * *"   # roda ~a cada hora
+    - cron: "15 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -43,41 +43,51 @@ jobs:
 
           QUERIES = [
             "iphone 11", "smartwatch", "fone bluetooth", "notebook", "headset gamer",
-            "cafeteira", "air fryer", "brinquedos educativos", "roupas femininas vestido",
+            "cafeteira", "air fryer", "brinquedos educativos", "vestido feminino",
             "tenis masculino esportivo", "mochila escolar", "smart tv 43",
           ]
 
           DOMAINS = [
             r"amazon\.(com|com\.br|br)",
             r"mercadolivre\.com\.br",
-            r"shopee\.(br|com\.br)",
+            r"shopee\.(com|com\.br|br)",
             r"shein\.(com|com\.br|br)",
           ]
-          dom_re = re.compile(r"https?://[^\"'<>]+", re.I)
+          dom_re = re.compile(r"https?://[^\"'<> ]+", re.I)
+
+          ENGINES = [
+            "https://www.bing.com/search?q=",
+            "https://www.google.com/search?q=",
+          ]
 
           def good(u: str) -> bool:
             u = u.lower()
-            if any(x in u for x in ["accounts.", "login", "cart", "checkout", "track", "seller", "support", "help"]): return False
+            if any(x in u for x in ["accounts.", "login", "cart", "checkout", "track", "seller", "support", "help", "mailto:"]): return False
             return any(re.search(d, u) for d in DOMAINS)
 
-          def duckduckgo_links(q: str):
-            url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(q)
-            r = requests.get(url, headers=random.choice(HDRS), timeout=25)
-            if r.status_code!=200: return []
-            hrefs = re.findall(r'href="([^"]+)"', r.text)
+          def search_links(q: str):
             out=[]
-            for h in hrefs:
-              h = html.unescape(h)
-              if h.startswith("/"): continue
-              if not h.startswith("http"): continue
-              for u in re.findall(dom_re, h):
-                if good(u):
-                  out.append(u)
+            for e in ENGINES:
+              url = "https://r.jina.ai/http/" + e + urllib.parse.quote(q)
+              try:
+                r = requests.get(url, headers=random.choice(HDRS), timeout=25)
+                if r.status_code!=200: 
+                  continue
+                for h in re.findall(r'href="([^"]+)"', r.text):
+                  h = html.unescape(h)
+                  if not h.startswith("http"): 
+                    continue
+                  for u in re.findall(dom_re, h):
+                    if good(u):
+                      out.append(u)
+              except Exception:
+                pass
+              time.sleep(0.6)
             return out
 
           def fetch_meta(u: str):
             try:
-              r = requests.get(u, headers=random.choice(HDRS), timeout=25, allow_redirects=True)
+              r = requests.get("https://r.jina.ai/http/"+u, headers=random.choice(HDRS), timeout=25, allow_redirects=True)
             except Exception:
               return None
             if r.status_code>=400 or not r.text: return None
@@ -134,16 +144,15 @@ jobs:
             except Exception as e:
               return False, str(e)
 
-          # main loop
           random.shuffle(QUERIES)
           max_per_run = 40
           created=0; seen=set()
           for q in QUERIES:
-            links = duckduckgo_links(f"site:amazon.com.br {q}") + \
-                    duckduckgo_links(f"site:mercadolivre.com.br {q}") + \
-                    duckduckgo_links(f"site:shopee.com.br {q}") + \
-                    duckduckgo_links(f"site:shein.com {q}") + \
-                    duckduckgo_links(f"site:shein.com.br {q}")
+            links = search_links(f"site:amazon.com.br {q}") + \
+                    search_links(f"site:mercadolivre.com.br {q}") + \
+                    search_links(f"site:shopee.com.br {q}") + \
+                    search_links(f"site:shein.com {q}") + \
+                    search_links(f"site:shein.com.br {q}")
             for u in links:
               if u in seen: continue
               seen.add(u)
@@ -151,7 +160,7 @@ jobs:
               meta = fetch_meta(u) or {}
               ok, msg = create_product(u, meta)
               if ok: created+=1
-              time.sleep(random.uniform(1.0, 3.0))
+              time.sleep(random.uniform(0.8, 2.0))
             if created>=max_per_run:
               break
 
