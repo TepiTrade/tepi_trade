@@ -30,7 +30,6 @@ jobs:
         run: |
           python - <<'PY'
           import os, re, time, json, random, html, hashlib, urllib.parse, requests
-          from slugify import slugify
 
           BASE = os.environ["WC_BASE"].rstrip("/")
           CK   = os.environ["WC_CK"]
@@ -72,7 +71,7 @@ jobs:
             for u in out:
               if u not in seen:
                 seen.add(u); res.append(u)
-            return res[:50]
+            return res[:60]
 
           def extract_meta(url: str):
             try:
@@ -169,12 +168,14 @@ jobs:
             "notebook i5 8gb ssd",
             "mouse gamer rgb",
             "tv stick 4k",
+            "monitor 24 full hd",
+            "teclado mecânico rgb",
           ]
 
           random.shuffle(QUERIES)
           created = 0
           updated = 0
-          max_per_run = 10
+          max_per_run = 12
 
           for q in QUERIES:
             if created + updated >= max_per_run:
@@ -190,7 +191,7 @@ jobs:
                 created += 1
               elif result == "updated":
                 updated += 1
-              time.sleep(random.uniform(0.6, 1.6))
+              time.sleep(random.uniform(0.6, 1.4))
 
           print(json.dumps({"created": created, "updated": updated}, ensure_ascii=False))
           PY
