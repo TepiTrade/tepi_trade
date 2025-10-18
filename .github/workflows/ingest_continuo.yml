@@ -3,13 +3,12 @@ name: ingestao-continuada
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"   # a cada 15 min
+    - cron: "*/15 * * * *"
 
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 50
-
     steps:
       - uses: actions/checkout@v4
 
@@ -20,17 +19,17 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install requests python-slugify
+          pip install requests python-slugify beautifulsoup4 lxml
 
       - name: Ingestão com imagem
         env:
-          WC_BASE: ${{ secrets.WC_BASE }}   # ex.: https://ctctech.store
+          WC_BASE: ${{ secrets.WC_BASE }}
           WC_CK:   ${{ secrets.WC_CK }}
           WC_CS:   ${{ secrets.WC_CS }}
         run: |
           python - <<'PY'
           import os, re, time, json, random, html, hashlib, urllib.parse, requests
-          from slugify import slugify
+          from bs4 import BeautifulSoup
 
           BASE = os.environ["WC_BASE"].rstrip("/")
           CK   = os.environ["WC_CK"]
@@ -41,136 +40,203 @@ jobs:
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36",
             "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
           })
+          TIMEOUT = 20
 
           ENGINES = [
             "https://www.bing.com/search?q=",
             "https://duckduckgo.com/html/?q=",
           ]
-          DOMAIN_OK = re.compile(r"(amazon\.com\.br|mercadolivre\.com\.br|shopee\.com\.br|shein\.com)", re.I)
-          BAD_PATH = ("login","cart","checkout","track","seller","support","help","mailto:",
-                      "account","orders","wishlist")
+
+          DOMAINS = [
+            r"amazon\.com\.br", r"mercadolivre\.com\.br", r"shopee\.com\.br", r"shein\.com",
+            r"aliexpress\.com", r"magazineluiza\.com\.br", r"americanas\.com\.br",
+            r"submarino\.com\.br", r"kabum\.com\.br", r"casasbahia\.com\.br",
+            r"extra\.com\.br", r"pontofrio\.com\.br", r"carrefour\.com\.br",
+            r"terabyteshop\.com\.br", r"pichau\.com\.br", r"fastshop\.com\.br",
+            r"netshoes\.com\.br", r"centauro\.com\.br"
+          ]
+          DOMAIN_OK = re.compile("(" + "|".join(DOMAINS) + ")", re.I)
+
+          BAD_PATH = (
+            "login","cart","checkout","track","seller","support","help","mailto:",
+            "account","orders","wishlist","entrar","minha-conta"
+          )
+
+          PRICE_RX = re.compile(
+            r"(?:R\$|\$)\s*([0-9]{1,3}(?:[\.\s][0-9]{3})*(?:,[0-9]{2})?|[0-9]+(?:\.[0-9]{2}))",
+            re.I
+          )
+
+          def clean_price(s):
+            s = s.replace(" ", "")
+            s = s.replace("R$", "").replace("$", "")
+            s = s.replace(".", "").replace("\u00a0", "")
+            s = s.replace(",", ".")
+            try:
+              return "{:.2f}".format(float(s))
+            except Exception:
+              return ""
 
           def search_links(q: str):
-            out=[]
-            q_full = f'{q} site:amazon.com.br OR site:mercadolivre.com.br OR site:shopee.com.br OR site:shein.com'
-            for eng in ENGINES:
-              url = eng + urllib.parse.quote(q_full)
-              try:
-                r = S.get(url, timeout=20)
-                r.raise_for_status()
-              except Exception:
-                continue
-              for u in re.findall(r'https?://[^"\'\s<>]+', r.text):
-                u = u.split("&")[0]
-                if not u.startswith("http"): 
+            out = []
+
+            q_domains = q + " " + " OR ".join([f"site:{d.replace('\\\\','').replace('(', '').replace(')','')}" for d in [
+              "amazon.com.br","mercadolivre.com.br","shopee.com.br","shein.com",
+              "aliexpress.com","magazineluiza.com.br","americanas.com.br",
+              "submarino.com.br","kabum.com.br","casasbahia.com.br",
+              "extra.com.br","pontofrio.com.br","carrefour.com.br",
+              "terabyteshop.com.br","pichau.com.br","fastshop.com.br",
+              "netshoes.com.br","centauro.com.br"
+            ]])
+
+            queries = [q_domains, q]  # tenta restrito, depois aberto
+
+            for qx in queries:
+              for eng in ENGINES:
+                url = eng + urllib.parse.quote(qx)
+                try:
+                  r = S.get(url, timeout=TIMEOUT)
+                  r.raise_for_status()
+                except Exception:
                   continue
-                if any(x in u for x in BAD_PATH): 
-                  continue
-                if DOMAIN_OK.search(u):
-                  out.append(u)
-            seen,res=set(),[]
+                for u in re.findall(r'https?://[^"\'\s<>]+', r.text):
+                  u = u.split("&")[0]
+                  if not u.startswith("http"):
+                    continue
+                  if any(x in u for x in BAD_PATH):
+                    continue
+                  if DOMAIN_OK.search(u):
+                    out.append(u)
+
+            seen, res = set(), []
             for u in out:
               if u not in seen:
                 seen.add(u); res.append(u)
-            return res[:60]
+            return res[:120]
 
           def extract_meta(url: str):
             try:
-              r = S.get(url, timeout=25)
+              r = S.get(url, timeout=TIMEOUT)
               r.raise_for_status()
             except Exception:
               return None
+
             t = r.text
-            def m(prop):
-              z = re.search(rf'<meta[^>]+property=["\']{prop}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
-              if not z:
-                z = re.search(rf'<meta[^>]+name=["\']{prop}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
-              return html.unescape(z.group(1).strip()) if z else ""
-            title = m("og:title") or m("twitter:title")
+            soup = BeautifulSoup(t, "lxml")
+
+            def first_meta(*props):
+              for p in props:
+                tag = soup.find("meta", attrs={"property": p}) or soup.find("meta", attrs={"name": p})
+                if tag and tag.get("content"):
+                  return html.unescape(tag["content"]).strip()
+              return ""
+
+            title = first_meta("og:title","twitter:title") or (soup.title.text.strip() if soup.title else "")
             if not title:
-              zz = re.search(r"<title>(.*?)</title>", t, re.I|re.S)
-              title = zz.group(1).strip() if zz else ""
-            img   = m("og:image") or m("twitter:image")
-            price = ""
-            z = re.search(r'content=["\']R?\$?\s?(\d{1,3}(?:[\.\s]\d{3})*(?:,\d{2})?)["\'][^>]+property=["\']product:price:amount["\']', t, re.I)
-            if not z:
-              z = re.search(r'R\$\s?(\d{1,3}(?:[\.\s]\d{3})*(?:,\d{2})?)', t)
-            if z:
-              price = z.group(1).replace(".", "").replace(" ", "").replace(",", ".")
+              h1 = soup.find("h1")
+              if h1: title = h1.get_text(strip=True)
+
+            img = first_meta("og:image","twitter:image")
+            if not img:
+              # tenta imagens grandes na página
+              for im in soup.select("img[src]"):
+                src = im.get("src") or ""
+                if any(k in src.lower() for k in ["500", "600", "800", "1000", "1200", "zoom", "large"]):
+                  img = src
+                  break
+              if not img:
+                tag = soup.select_one("img[src]")
+                if tag: img = tag.get("src")
+
+            # preço por meta
+            price = first_meta("product:price:amount","og:price:amount")
+            if not price:
+              m = PRICE_RX.search(t)
+              if m:
+                price = clean_price(m.group(1))
+
+            title = (title or "").strip()
+            img   = (img or "").strip()
+            price = (price or "").strip()
+
             if not title:
               return None
+
             return {"title": title[:180], "image": img, "price": price}
 
           def wc_get_by_sku(sku: str):
+            url = f"{BASE}/wp-json/wc/v3/products"
             try:
-              r = S.get(
-                f"{BASE}/wp-json/wc/v3/products",
-                params={"sku": sku, "per_page":1, "consumer_key":CK, "consumer_secret":CS},
-                timeout=20
-              )
+              r = S.get(url, params={"sku": sku, "per_page":1,
+                                     "consumer_key":CK, "consumer_secret":CS}, timeout=TIMEOUT)
               r.raise_for_status()
               arr = r.json()
               if arr:
                 pid = arr[0]["id"]
-                has_img = bool(arr[0].get("images"))
-                return pid, has_img
+                imgs = arr[0].get("images") or []
+                return pid, (len(imgs)>0)
             except Exception:
               pass
             return None, False
 
-          def wc_create(meta, url, sku):
+          def wc_create_or_update(meta, url):
+            title = meta["title"]
+            img   = meta["image"]
+            price = meta["price"] if meta["price"] else "0"
+            sku   = hashlib.md5(url.encode("utf-8")).hexdigest()[:12].upper()
+
+            pid, has_img = wc_get_by_sku(sku)
+            api = f"{BASE}/wp-json/wc/v3/products"
+
+            if pid and (not has_img) and img:
+              try:
+                r = S.put(f"{api}/{pid}",
+                          params={"consumer_key":CK, "consumer_secret":CS},
+                          json={"images":[{"src": img}]}, timeout=TIMEOUT)
+                r.raise_for_status()
+                return "updated"
+              except Exception:
+                return "error"
+
+            if pid:
+              return "skip"
+
             data = {
-              "name": meta["title"],
+              "name": title,
               "type": "simple",
               "status": "publish",
-              "regular_price": meta["price"] or "0",
+              "regular_price": price,
               "sku": sku,
               "external_url": url,
               "catalog_visibility": "visible",
               "short_description": f"Importado automaticamente. Fonte: {url}",
-              "images": ([{"src": meta["image"]}] if meta["image"] else []),
+              "images": ([{"src": img}] if img else []),
               "categories": [],
               "tags": [],
             }
             try:
-              r = S.post(
-                f"{BASE}/wp-json/wc/v3/products",
-                params={"consumer_key":CK, "consumer_secret":CS},
-                json=data, timeout=25
-              )
+              r = S.post(api,
+                         params={"consumer_key":CK, "consumer_secret":CS},
+                         json=data, timeout=TIMEOUT)
               r.raise_for_status()
-              return True
+              return "created"
             except Exception:
-              return False
-
-          def wc_update_image(pid:int, img:str):
-            try:
-              r = S.put(
-                f"{BASE}/wp-json/wc/v3/products/{pid}",
-                params={"consumer_key":CK, "consumer_secret":CS},
-                json={"images":[{"src": img}]}, timeout=25
-              )
-              r.raise_for_status()
-              return True
-            except Exception:
-              return False
+              return "error"
 
           QUERIES = [
-            "smartphone 128gb preço",
-            "smartwatch masculino promoção",
-            "headset gamer bluetooth",
-            "caixa de som portátil",
-            "fone bluetooth tws",
-            "notebook i5 8gb ssd",
-            "mouse gamer rgb",
-            "tv stick 4k",
+            "smartphone 128gb promoção", "smartphone moto g54 256gb",
+            "iphone 13 128gb", "xiaomi redmi note 13",
+            "ssd nvme 1tb", "ssd 480gb barato",
+            "tv 50 4k", "tv 55 4k", "tv 65 4k",
+            "roteador wi-fi 6 ax3000", "headset gamer bluetooth",
+            "caixa de som portátil", "fone bluetooth tws",
+            "notebook i5 8gb ssd", "mouse gamer rgb",
+            "fire tv stick 4k", "smartwatch feminino",
           ]
 
           random.shuffle(QUERIES)
-          created = 0
-          updated = 0
-          skipped = 0
-          max_per_run = 12
+          created = updated = skipped = 0
+          max_per_run = 20
 
           for q in QUERIES:
             if created + updated >= max_per_run:
@@ -178,25 +244,17 @@ jobs:
             for u in search_links(q):
               if created + updated >= max_per_run:
                 break
-              meta = extract_meta(u)
-              if not meta:
+              m = extract_meta(u)
+              if not m:
                 continue
-
-              sku = hashlib.md5(u.encode("utf-8")).hexdigest()[:12].upper()
-              pid, has_img = wc_get_by_sku(sku)
-
-              if pid:
-                if (not has_img) and meta["image"]:
-                  if wc_update_image(pid, meta["image"]):
-                    updated += 1
-                else:
-                  skipped += 1
-                continue
-
-              if wc_create(meta, u, sku):
+              res = wc_create_or_update(m, u)
+              if res == "created":
                 created += 1
-
-              time.sleep(random.uniform(0.6, 1.6))
+              elif res == "updated":
+                updated += 1
+              elif res == "skip":
+                skipped += 1
+              time.sleep(random.uniform(0.4, 1.2))
 
           print(json.dumps({"created": created, "updated": updated, "skipped": skipped}, ensure_ascii=False))
           PY
