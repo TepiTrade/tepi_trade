@@ -29,7 +29,6 @@ jobs:
         run: |
           python - <<'PY'
           import os, re, time, json, random, html, hashlib, urllib.parse, requests
-          from slugify import slugify
 
           BASE = os.environ["WC_BASE"].rstrip("/")
           CK   = os.environ["WC_CK"]
@@ -49,24 +48,24 @@ jobs:
           DOMAINS = [
             "amazon.com.br","mercadolivre.com.br","shopee.com.br","shein.com",
             "aliexpress.com","magazineluiza.com.br","americanas.com.br","submarino.com.br",
-            "kabum.com.br","casasbahia.com.br","pontofrio.com.br","carrefour.com.br",
-            "olx.com.br","ebay.com","walmart.com","bestbuy.com","allegro.pl","rakuten.co.jp",
-            "flipkart.com","otto.de","bol.com","jd.com","tmall.com","taobao.com",
+            "kabum.com.br","casasbahia.com.br"
           ]
 
           BAD_PATH = (
             "login","cart","checkout","track","seller","support","help","mailto:",
-            "account","orders","wishlist","entrar","minha-conta","suporte"
+            "account","orders","wishlist","entrar","minha-conta"
           )
 
           PRICE_RX = re.compile(
-            r'(?:R\$|\$|€|£|\¥)\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})?|[0-9]+(?:\.[0-9]{2}))'
+            r'(?:R\$\s*|\$?\s*)'
+            r'([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))',
+            re.I
           )
 
           def search_links(q: str):
-            q_domains = " OR ".join(["site:" + d for d in DOMAINS])
-            q_full = f"{q} ({q_domains})"
             out = []
+            site_filter = " OR ".join(["site:" + d for d in DOMAINS])
+            q_full = f"{q} {site_filter}"
             for eng in ENGINES:
               url = eng + urllib.parse.quote(q_full)
               try:
@@ -74,11 +73,11 @@ jobs:
                 r.raise_for_status()
               except Exception:
                 continue
-              for u in re.findall(r'https?://[^\s"\'<>]+', r.text):
+              for u in re.findall(r'https?://[^"\'\s<>]+', r.text):
                 u = u.split("&")[0]
-                if not u.startswith("http"): 
+                if not u.startswith("http"):
                   continue
-                if any(b in u for b in BAD_PATH):
+                if any(x in u for x in BAD_PATH):
                   continue
                 if any(d in u for d in DOMAINS):
                   out.append(u)
@@ -88,12 +87,6 @@ jobs:
                 seen.add(u); res.append(u)
             return res[:120]
 
-          def meta_val(t: str, prop: str):
-            m = re.search(rf'<meta[^>]+property=["\']{prop}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
-            if not m:
-              m = re.search(rf'<meta[^>]+name=["\']{prop}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
-            return html.unescape(m.group(1).strip()) if m else ""
-
           def extract_meta(url: str):
             try:
               r = S.get(url, timeout=25)
@@ -101,19 +94,25 @@ jobs:
             except Exception:
               return None
             t = r.text
-            title = meta_val(t, "og:title") or meta_val(t, "twitter:title")
+
+            def meta(prop):
+              m = re.search(rf'<meta[^>]+property=["\']{prop}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
+              if not m:
+                m = re.search(rf'<meta[^>]+name=["\']{prop}["\'][^>]+content=["\']([^"\']+)["\']', t, re.I)
+              return html.unescape(m.group(1).strip()) if m else ""
+
+            title = meta("og:title") or meta("twitter:title")
             if not title:
               m = re.search(r"<title>(.*?)</title>", t, re.I | re.S)
               title = m.group(1).strip() if m else ""
-            img = meta_val(t, "og:image") or meta_val(t, "twitter:image")
+
+            img = meta("og:image") or meta("twitter:image")
+
             price = ""
-            mprice = PRICE_RX.search(t)
-            if mprice:
-              raw = mprice.group(1)
-              price = raw.replace(".", "").replace(" ", "").replace(",", ".")
-            if not title:
-              return None
-            return {"title": title[:200], "image": img, "price": price}
+            mp = PRICE_RX.search(t)
+            if mp:
+              price = mp.group(1).replace(".", "").replace(",", ".")
+            return {"title": title[:180] if title else "", "image": img, "price": price}
 
           def get_by_sku(sku: str):
             api = f"{BASE}/wp-json/wc/v3/products"
@@ -123,28 +122,29 @@ jobs:
               r.raise_for_status()
               arr = r.json()
               if arr:
-                pid = arr[0]["id"]
-                imgs = arr[0].get("images") or []
-                return pid, (len(imgs) > 0)
+                item = arr[0]
+                pid = item["id"]
+                imgs = item.get("images") or []
+                return pid, bool(imgs)
             except Exception:
               pass
             return None, False
 
-          def create_or_update_product(meta: dict, url: str):
+          def create_or_update(meta, url):
             title = meta["title"]
             img   = meta["image"]
             price = meta["price"] or "0"
-            sku   = hashlib.md5(url.encode("utf-8")).hexdigest()[:16].upper()
+            sku   = hashlib.md5(url.encode("utf-8")).hexdigest()[:12].upper()
 
-            pid, has_img = get_by_sku(sku)
             api = f"{BASE}/wp-json/wc/v3/products"
+            pid, has_img = get_by_sku(sku)
 
             if pid and (not has_img) and img:
               try:
-                rr = S.put(f"{api}/{pid}",
-                           params={"consumer_key": CK, "consumer_secret": CS},
-                           json={"images": [{"src": img}]}, timeout=25)
-                rr.raise_for_status()
+                r = S.put(f"{api}/{pid}",
+                         params={"consumer_key": CK, "consumer_secret": CS},
+                         json={"images": [{"src": img}]}, timeout=25)
+                r.raise_for_status()
                 return "updated"
               except Exception:
                 return "error"
@@ -153,7 +153,7 @@ jobs:
               return "skip"
 
             data = {
-              "name": title,
+              "name": title or "Produto afiliado",
               "type": "simple",
               "status": "publish",
               "regular_price": price,
@@ -166,30 +166,28 @@ jobs:
               "tags": [],
             }
             try:
-              rr = S.post(api, params={"consumer_key": CK, "consumer_secret": CS},
-                          json=data, timeout=25)
-              rr.raise_for_status()
+              r = S.post(api, params={"consumer_key": CK, "consumer_secret": CS},
+                         json=data, timeout=25)
+              r.raise_for_status()
               return "created"
             except Exception:
               return "error"
 
-        QUERIES = [
-  "iphone 14 128gb preço", "xiaomi redmi note 13 256gb",
-  "galaxy s23 256gb oferta", "notebook i5 16gb ssd 512",
-  "macbook air m2 8gb 256", "tv 55 4k hdr",
-  "monitor 27 144hz", "ssd nvme 1tb gen4",
-  "placa de video rtx 4060", "headset gamer bluetooth",
-  "caixa de som portátil jbl", "fone bluetooth tws anc",
-  "smartwatch amoled gps", "roteador wifi 6 ax3000",
-  "impressora tanque de tinta", "câmera action 4k",
-  "airfryer 5 litros", "cafeteira espresso",
-  "cadeira gamer ergonômica", "kit ferramentas makita"
-]
+          QUERIES = [
+            "iphone 14 128gb preço","xiaomi redmi note 13 256gb",
+            "galaxy s23 256gb oferta","notebook i5 16gb ssd 512",
+            "macbook air m2 8gb 256","tv 55 4k hdr",
+            "monitor 27 144hz","ssd nvme 1tb gen4",
+            "placa de video rtx 4060","headset gamer bluetooth",
+            "caixa de som portátil bt","fone bluetooth tws anc",
+            "smartwatch amoled gps","roteador wi-fi 6 ax3000",
+            "impressora tanque de tinta","câmera action 4k",
+            "airfryer 5 litros","cafeteira espresso",
+            "cadeira gamer ergonômica","kit ferramentas makita"
+          ]
 
           random.shuffle(QUERIES)
-          created = 0
-          updated = 0
-          skipped = 0
+          created = updated = skipped = 0
           max_per_run = 20
 
           for q in QUERIES:
@@ -199,16 +197,16 @@ jobs:
               if created + updated >= max_per_run:
                 break
               meta = extract_meta(u)
-              if not meta:
+              if not meta or not meta["title"]:
                 continue
-              res = create_or_update_product(meta, u)
+              res = create_or_update(meta, u)
               if res == "created":
                 created += 1
               elif res == "updated":
                 updated += 1
               elif res == "skip":
                 skipped += 1
-              time.sleep(random.uniform(0.5, 1.2))
+              time.sleep(random.uniform(0.6, 1.4))
 
           print(json.dumps({"created": created, "updated": updated, "skipped": skipped}, ensure_ascii=False))
           PY
