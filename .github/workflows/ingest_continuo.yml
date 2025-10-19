@@ -51,7 +51,11 @@ jobs:
               "https://duckduckgo.com/html/?q=",
           ]
 
-          DOMAINS = []  # opcional: ["mercadolivre.com.br","amazon.com.br",...]
+          DOMAINS = [
+              "amazon.com.br","mercadolivre.com.br","shopee.com.br","magazineluiza.com.br",
+              "americanas.com.br","submarino.com.br","kabum.com.br","casasbahia.com.br",
+              "aliexpress.com","temu.com"
+          ]
 
           BAD_PATH = (
               "login","cart","checkout","track","seller","support","help","mailto:",
