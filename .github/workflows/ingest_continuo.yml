@@ -188,7 +188,7 @@ jobs:
 
           random.shuffle(QUERIES)
           created = updated = skipped = 0
-          max_per_run = 20
+          max_per_run = 30
 
           for q in QUERIES:
             if created + updated >= max_per_run:
