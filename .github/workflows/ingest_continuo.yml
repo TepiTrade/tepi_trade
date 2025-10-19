@@ -173,18 +173,18 @@ jobs:
             except Exception:
               return "error"
 
-          QUERIES = [
-            "smartphone 256gb promoção",
-            "notebook i5 8gb ssd",
-            "ssd nvme 1tb",
-            "tv 50 4k",
-            "headset gamer bluetooth",
-            "roteador wi-fi 6 ax3000",
-            "smartwatch feminino",
-            "camera action 4k",
-            "placa de video 8gb",
-            "fone bluetooth tws",
-          ]
+        QUERIES = [
+  "iphone 14 128gb preço", "xiaomi redmi note 13 256gb",
+  "galaxy s23 256gb oferta", "notebook i5 16gb ssd 512",
+  "macbook air m2 8gb 256", "tv 55 4k hdr",
+  "monitor 27 144hz", "ssd nvme 1tb gen4",
+  "placa de video rtx 4060", "headset gamer bluetooth",
+  "caixa de som portátil jbl", "fone bluetooth tws anc",
+  "smartwatch amoled gps", "roteador wifi 6 ax3000",
+  "impressora tanque de tinta", "câmera action 4k",
+  "airfryer 5 litros", "cafeteira espresso",
+  "cadeira gamer ergonômica", "kit ferramentas makita"
+]
 
           random.shuffle(QUERIES)
           created = 0
