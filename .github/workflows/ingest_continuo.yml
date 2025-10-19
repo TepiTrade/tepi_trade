@@ -19,7 +19,15 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install requests python-slugify
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install requests python-slugify beautifulsoup4 lxml pandas dateparser tenacity
+          fi
+
+      - name: Executar crawler
+        run: python crawler_v2.py
+        continue-on-error: true
 
       - name: Ingestão global com imagem
         env:
@@ -27,7 +35,6 @@ jobs:
           WC_CK:   ${{ secrets.WC_CK }}
           WC_CS:   ${{ secrets.WC_CS }}
         run: |
-          python - <<'PY'
           import os, re, time, json, random, html, hashlib, urllib.parse, requests
 
           BASE = os.environ["WC_BASE"].rstrip("/")
@@ -45,7 +52,7 @@ jobs:
             "https://duckduckgo.com/html/?q=",
           ]
 
-         DOMAINS = []
+          DOMAINS = []
 
           BAD_PATH = (
             "login","cart","checkout","track","seller","support","help","mailto:",
@@ -60,8 +67,8 @@ jobs:
 
           def search_links(q: str):
             out = []
-            site_filter = " OR ".join(["site:" + d for d in DOMAINS])
-            q_full = f"{q} {site_filter}"
+            site_filter = " OR ".join(["site:" + d for d in DOMAINS]) if DOMAINS else ""
+            q_full = f"{q} {site_filter}".strip()
             for eng in ENGINES:
               url = eng + urllib.parse.quote(q_full)
               try:
@@ -75,7 +82,7 @@ jobs:
                   continue
                 if any(x in u for x in BAD_PATH):
                   continue
-                if any(d in u for d in DOMAINS):
+                if (not DOMAINS) or any(d in u for d in DOMAINS):
                   out.append(u)
             seen, res = set(), []
             for u in out:
@@ -205,4 +212,3 @@ jobs:
               time.sleep(random.uniform(0.6, 1.4))
 
           print(json.dumps({"created": created, "updated": updated, "skipped": skipped}, ensure_ascii=False))
-          PY
