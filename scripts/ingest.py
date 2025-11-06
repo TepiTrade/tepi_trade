@@ -58,7 +58,7 @@ def fetch_csv_feeds(urls: List[str]) -> List[Dict]:
             headers = [h.strip() for h in lines[0].split(",")]
             for line in lines[1:]:
                 cols = line.split(",")
-                row = {headers[i]: (cols[i].strip() if i < len(cols) else "") for i in range(len(headers))}
+                row = {headers[i]: (cols[i].strip() if i < len(headers) else "") for i in range(len(headers))}
                 mapped = {
                     "title": row.get("name") or row.get("title"),
                     "description": row.get("description"),
@@ -118,7 +118,7 @@ def wc_upsert(batch: List[Dict]):
             "short_description": it["merchant"],
             "categories": [{"name": it["category"]}],
             "images": [{"src": it["image_url"]}] if it["image_url"] else [],
-            "sku": it["sku"] or it["fingerprint"],
+            "sku": it["sku"]or it["fingerprint"],
             "manage_stock": False
         })
     payload = {"create": create_payload}
