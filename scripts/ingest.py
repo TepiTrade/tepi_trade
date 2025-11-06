@@ -1,4 +1,5 @@
-import List, Dict
+import os, json, time, hashlib
+from typing import List, Dict
 import requests
 from slugify import slugify
 
@@ -117,7 +118,7 @@ def wc_upsert(batch: List[Dict]):
             "short_description": it["merchant"],
             "categories": [{"name": it["category"]}],
             "images": [{"src": it["image_url"]}] if it["image_url"] else [],
-            "sku": it["sku"]or it["fingerprint"],
+            "sku": it["sku"] or it["fingerprint"],
             "manage_stock": False
         })
     payload = {"create": create_payload}
