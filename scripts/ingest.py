@@ -17,14 +17,29 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 FEED_PATH = BASE_DIR / "alimentar" / "produtos_woo_01.csv"
 
 # Essas variáveis já devem estar configuradas como segredos no GitHub
-# WOO_BASE_URL: ex. https://ctctech.store
-# WOO_CONSUMER_KEY e WOO_CONSUMER_SECRET: chaves REST do WooCommerce
-WOO_BASE_URL = os.environ.get("WOO_BASE_URL")
-WOO_CONSUMER_KEY = os.environ.get("WOO_CONSUMER_KEY")
-WOO_CONSUMER_SECRET = os.environ.get("WOO_CONSUMER_SECRET")
+# WOO_BASE_URL / WC_SITE / WC_URL: ex. https://ctctech.store
+# WOO_CONSUMER_KEY / WC_CK, WOO_CONSUMER_SECRET / WC_CS: chaves REST do WooCommerce
+WOO_BASE_URL = (
+    os.environ.get("WOO_BASE_URL")
+    or os.environ.get("WC_SITE")
+    or os.environ.get("WC_URL")
+)
+WOO_CONSUMER_KEY = (
+    os.environ.get("WOO_CONSUMER_KEY")
+    or os.environ.get("WC_CK")
+)
+WOO_CONSUMER_SECRET = (
+    os.environ.get("WOO_CONSUMER_SECRET")
+    or os.environ.get("WC_CS")
+)
 
 if not (WOO_BASE_URL and WOO_CONSUMER_KEY and WOO_CONSUMER_SECRET):
-    print("[ERRO] Variáveis de ambiente WOO_BASE_URL / WOO_CONSUMER_KEY / WOO_CONSUMER_SECRET não configuradas.")
+    print(
+        "[ERRO] Variáveis de ambiente não configuradas. "
+        "Defina WOO_BASE_URL ou WC_SITE/WC_URL, "
+        "WOO_CONSUMER_KEY ou WC_CK, "
+        "e WOO_CONSUMER_SECRET ou WC_CS."
+    )
     sys.exit(0)
 
 API_BASE = WOO_BASE_URL.rstrip("/") + "/wp-json/wc/v3"
