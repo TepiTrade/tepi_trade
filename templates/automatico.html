@@ -1,1 +1,45 @@
-﻿<h1>Painel Bot Automático</h1>
+﻿<!DOCTYPE html><html lang='pt-BR'><head>
+<meta charset='utf-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/>
+<title>TepiTrade • Automático</title>
+<link rel='stylesheet' href='/static/style.css'>
+</head><body>
+<div class='container'>
+  <div class='header'>
+    <div class='brand'><div class='logo'></div><div class='h1 gold'>AUTOMÁTICO</div></div>
+    <div class='row'><span class='badge'>Execução 24/7</span><span class='badge'>Perfil: Moderado</span></div>
+  </div>
+
+  <div class='card'>
+    <div class='row' style='justify-content:space-between'>
+      <div class='row'>
+        <label>Corretora</label>
+        <select><option>Binance</option><option>Bybit</option><option>OKX</option></select>
+        <label style='margin-left:10px'>Conta</label>
+        <select><option>Spot</option><option>Futuros</option></select>
+        <label style='margin-left:10px'>Vela</label>
+        <select><option>1m</option><option>3m</option><option>5m</option><option selected>15m</option><option>30m</option><option>1h</option><option>2h</option><option>4h</option><option>1d</option></select>
+      </div>
+      <div class='row'>
+        <a class='btn' href='#'>INICIAR</a>
+        <a class='btn' href='#' style='margin-left:8px'>PARAR</a>
+      </div>
+    </div>
+
+    <div class='table' style='margin-top:14px'>
+      <table>
+        <thead><tr><th>Ativo</th><th>Direção</th><th>Entrada</th><th>% do saldo</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>BTC/USDT</td><td class='ok'><b>COMPRA</b></td><td>14:02:00</td><td class='gold'>25%</td><td class='badge'>Executado</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class='row' style='margin-top:12px'>
+      <span class='badge'>Trava diária: -15%</span>
+      <span class='badge'>Pausa após 3 perdas</span>
+      <span class='badge'>Mín 2% • Máx 40% (certeza alta pode elevar)</span>
+    </div>
+  </div>
+
+  <div class='footer'>© TepiTrade</div>
+</div>
+</body></html>

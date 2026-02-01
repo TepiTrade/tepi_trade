@@ -1,41 +1,61 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <title>Painel de Sinais - TepiTrade</title>
-    <style>
-        body { font-family: Arial, sans-serif; background: #0d1117; color: #e6edf3; text-align: center; padding: 20px; }
-        h1 { color: #58a6ff; }
-        table { width: 80%; margin: 20px auto; border-collapse: collapse; background: #161b22; }
-        th, td { padding: 12px; border: 1px solid #30363d; }
-        th { background: #21262d; color: #58a6ff; }
-        tr:hover { background: #2d333b; }
-        .compra { color: #3fb950; font-weight: bold; }
-        .venda { color: #f85149; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <h1>📊 Painel de Sinais</h1>
-    <table>
-        <tr>
-            <th>Ativo</th>
-            <th>Direção</th>
-            <th>Preço</th>
-            <th>Horário</th>
-        </tr>
-        <tr>
-            <td>BTC/USDT</td>
-            <td class="compra">COMPRA</td>
-            <td>62.350</td>
-            <td>13:40</td>
-        </tr>
-        <tr>
-            <td>ETH/USDT</td>
-            <td class="venda">VENDA</td>
-            <td>2.450</td>
-            <td>13:42</td>
-        </tr>
-    </table>
-</body>
-</html>
+﻿<!DOCTYPE html><html lang='pt-BR'><head>
+<meta charset='utf-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/>
+<meta http-equiv='refresh' content='15'>
+<title>TepiTrade • Sinais</title>
+<link rel='stylesheet' href='/static/style.css'>
+</head><body>
+<div class='container'>
+  <div class='header'>
+    <div class='brand'><div class='logo'></div><div class='h1 gold'>SINAIS</div></div>
+    <div class='row'><span class='badge'>Atualiza a cada 15s</span><span class='badge'>Perfil: Moderado</span></div>
+  </div>
 
+  <div class='card'>
+    <div class='row' style='justify-content:space-between'>
+      <div class='row'>
+        <label>Corretora</label>
+        <select id='exch'>
+          <option>Binance</option><option>Bybit</option><option>OKX</option>
+        </select>
+        <label style='margin-left:10px'>Vela/Tempo</label>
+        <select id='tf'>
+          <option>1m</option><option>3m</option><option selected>5m</option><option>15m</option><option>30m</option>
+          <option>1h</option><option>2h</option><option>4h</option><option>1d</option>
+        </select>
+        <label style='margin-left:10px'>Ativo</label>
+        <input id='sym' placeholder='ex: BTC/USDT' value='BTC/USDT'/>
+      </div>
+      <div class='row'>
+        <a class='btn' id='openTv' href='#' target='_blank'>ABRIR GRÁFICO</a>
+      </div>
+    </div>
+
+    <div class='table'>
+      <table>
+        <thead>
+          <tr>
+            <th>Ativo</th><th>Vela</th><th>Direção</th><th>Entrada (hora exata)</th><th>% do saldo sugerido</th>
+          </tr>
+        </thead>
+        <tbody id='rows'>
+          <tr><td>BTC/USDT</td><td>5m</td><td class='ok'><b>COMPRA</b></td><td>13:45:10</td><td class='gold'>35%</td></tr>
+          <tr><td>ETH/USDT</td><td>1m</td><td class='err'><b>VENDA</b></td><td>13:45:40</td><td class='gold'>10%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style='margin-top:10px' class='badge'>Janela mínima entre sinais: 30s</div>
+  </div>
+
+  <div class='footer'>© TepiTrade</div>
+</div>
+<script>
+document.getElementById('openTv').addEventListener('click', function(e){
+  const ex = document.getElementById('exch').value.toLowerCase();
+  const tf = document.getElementById('tf').value;
+  const sym = document.getElementById('sym').value.replace('/','');
+  const map = {binance:'BINANCE',bybit:'BYBIT',okx:'OKX'};
+  const url = https://www.tradingview.com/chart/?symbol=:&interval=;
+  this.href = url;
+});
+</script>
+</body></html>

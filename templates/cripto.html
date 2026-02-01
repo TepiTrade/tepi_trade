@@ -1,129 +1,164 @@
-﻿<!DOCTYPE html>
+﻿<!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Painel Bot Criptomoedas</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TepiTrade — Painéis</title>
   <style>
-    body {
-      background-color: #0d1117;
-      color: #e6edf3;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 30px;
-    }
-    h1 {
-      color: gold;
-      text-shadow: 0 0 10px #ffcc00, 0 0 20px #ffaa00;
-    }
-    .container {
-      margin-top: 20px;
-    }
-    label, select {
-      font-size: 16px;
-      margin: 5px;
-    }
-    .btn-gold {
-      display: inline-block;
-      padding: 12px 24px;
-      margin-top: 20px;
-      font-size: 18px;
-      font-weight: bold;
-      color: #000;
-      background: linear-gradient(45deg, #FFD700, #FFA500);
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      text-decoration: none;
-      box-shadow: 0 0 10px gold, 0 0 20px orange;
-      transition: transform 0.2s;
-    }
-    .btn-gold:hover {
-      transform: scale(1.05);
-    }
-    table {
-      margin: 20px auto;
-      border-collapse: collapse;
-      width: 80%;
-      background: #161b22;
-      color: #e6edf3;
-    }
-    th, td {
-      border: 1px solid #30363d;
-      padding: 12px;
-    }
-    th {
-      background: #21262d;
-      color: gold;
-    }
-    .buy { color: #00ff00; font-weight: bold; }
-    .sell { color: #ff3333; font-weight: bold; }
-    .neutral { color: #ffaa00; font-weight: bold; }
+    :root{--bg:#0b0f14;--card:#111720;--ink:#e9eef5;--muted:#9fb1c4;--accent:#4da3ff;--ok:#16c47f;--warn:#ffcc00;--bad:#ff5a5a;--chip:#182432;}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Arial,sans-serif}
+    .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
+    .tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#0d141d;padding:6px;border-radius:16px}
+    .tabbtn{background:#0d141d;border:1px solid #1a2634;color:var(--ink);padding:12px;border-radius:12px;cursor:pointer}
+    .tabbtn.active{background:#162131;border-color:#263447}
+    .card{background:var(--card);border:1px solid #1a2634;border-radius:16px;padding:16px;box-shadow:0 6px 24px rgba(0,0,0,.25);}
+    .list{border:1px solid #1a2634;border-radius:12px;overflow:hidden;margin-top:8px}
+    .line{padding:10px 12px;border-bottom:1px solid #1a2634;display:grid;grid-template-columns:repeat(12,1fr);gap:8px;align-items:center}
+    .line:last-child{border-bottom:0}
+    .right{text-align:right}
+    .btn{background:#1c2736;border:1px solid #2a3a50;color:var(--ink);padding:8px 12px;border-radius:10px;cursor:pointer}
+    .btn[disabled]{opacity:.5;cursor:not-allowed}
+    .buy{color:var(--ok)} .sell{color:var(--bad)}
+    .bar{height:4px;background:#1a2634;border-radius:999px;overflow:hidden}
+    .bar>i{display:block;height:100%;background:var(--accent);width:0%}
+    .muted{color:var(--muted)} .pill{background:#162131;border:1px solid #25364b;color:#a8bfd6;padding:4px 10px;border-radius:999px;font-size:12px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .small{font-size:12px}
   </style>
 </head>
 <body>
-  <h1>🚀 Painel Bot Criptomoedas</h1>
+  <div class="wrap">
+    <h1>TepiTrade — Painéis</h1>
 
-  <div class="container">
-    <label for="exchange">Corretora:</label>
-    <select id="exchange">
-      <option value="binance">Binance</option>
-      <option value="bybit">Bybit</option>
-      <option value="okx">OKX</option>
-    </select>
+    <div class="tabs">
+      <button class="tabbtn active" data-tab="sinais">SINAIS (Manual)</button>
+      <button class="tabbtn" data-tab="auto">AUTOMÁTICO (Mundo)</button>
+      <button class="tabbtn" data-tab="crypto">CRIPTO (Automático)</button>
+    </div>
 
-    <label for="timeframe">Vela/Tempo:</label>
-    <select id="timeframe">
-      <option value="1m">1m</option>
-      <option value="3m">3m</option>
-      <option value="5m">5m</option>
-      <option value="15m">15m</option>
-      <option value="30m" selected>30m</option>
-      <option value="1h">1h</option>
-      <option value="2h">2h</option>
-      <option value="4h">4h</option>
-      <option value="1d">1d</option>
-    </select>
+    <div class="card" style="margin-top:12px;">
+      <div class="title">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="pill">Status: <b>PROTEGIDO (ON)</b></span>
+          <span class="pill">Top 20 do mundo — <b>atualização instantânea</b></span>
+          <span class="pill">Relógio do aparelho</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label class="small muted">Perfil de risco:</label>
+          <select id="perfil">
+            <option value="conservador">Conservador</option>
+            <option value="moderado" selected>Moderado</option>
+            <option value="agressivo_moderado">Agressivo Moderado</option>
+            <option value="agressivo_total">Agressivo Total</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <section id="tab-sinais" class="card" style="margin-top:12px;">
+      <div class="title">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <b style="font-size:18px;">Sinais (Manual)</b>
+          <span class="pill">Internacional (sem Brasil)</span>
+          <span class="pill">Prazo padrão: <b>45s</b></span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="small muted">Aplicar em:</span>
+          <select id="plataforma">
+            <option>Casa Trade</option>
+            <option>Execução Interna</option>
+            <option>Outra Plataforma</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="list" id="lista-sinais">
+        <div class="line" style="color:#9fb1c4">
+          <div>Ativo</div><div>Direção</div><div>Força</div><div>Validade (45s)</div><div class="right">Ação</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-auto" class="card" style="margin-top:12px;display:none">
+      <div class="title">
+        <b style="font-size:18px;">Automático (Mundo)</b>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="pill">20 mais lucrativos (rotativos)</span>
+          <span class="pill">Envio just-in-time</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-crypto" class="card" style="margin-top:12px;display:none">
+      <div class="title">
+        <b style="font-size:18px;">Cripto (Automático)</b>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="pill">Exclusivo criptomoedas</span>
+          <span class="pill">Binance + Bybit</span>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <a href="#" id="openChart" target="_blank" class="btn-gold">📈 Abrir Gráfico</a>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Ativo</th>
-        <th>Sinal</th>
-        <th>Entrada</th>
-        <th>% do saldo</th>
-        <th>Horário</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>BTC/USDT</td>
-        <td class="buy">COMPRA</td>
-        <td>–</td>
-        <td>35%</td>
-        <td>16:30</td>
-      </tr>
-      <tr>
-        <td>ETH/USDT</td>
-        <td class="sell">VENDA</td>
-        <td>–</td>
-        <td>20%</td>
-        <td>16:32</td>
-      </tr>
-    </tbody>
-  </table>
-
   <script>
-    document.getElementById('openChart').addEventListener('click', function(){
-      const ex = document.getElementById('exchange').value;
-      const tf = document.getElementById('timeframe').value;
-      const sym = "BTCUSDT"; 
-      const map = {binance:"BINANCE", bybit:"BYBIT", okx:"OKX"};
-      this.href = `https://www.tradingview.com/chart/?symbol=${map[ex]}:${sym}&interval=${tf}`;
+    const SIGNAL_WINDOW_MS = 45 * 1000;
+    const tabs = {
+      sinais: document.getElementById('tab-sinais'),
+      auto: document.getElementById('tab-auto'),
+      crypto: document.getElementById('tab-crypto'),
+    };
+    document.querySelectorAll('.tabbtn').forEach(btn=>{
+      btn.onclick = ()=>{
+        document.querySelectorAll('.tabbtn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        tabs.sinais.style.display = btn.dataset.tab==='sinais' ? '' : 'none';
+        tabs.auto.style.display   = btn.dataset.tab==='auto'   ? '' : 'none';
+        tabs.crypto.style.display = btn.dataset.tab==='crypto' ? '' : 'none';
+      };
     });
+
+    const lista = document.getElementById('lista-sinais');
+    const make = (a,d,f)=>({id:Math.random().toString(36).slice(2),ativo:a,direcao:d,forca:f,created:Date.now(),expires:Date.now()+SIGNAL_WINDOW_MS});
+    let sinais = [make('EUR/USD','COMPRA',94),make('XAU/USD','VENDA',89),make('NVDA','COMPRA',86)];
+
+    function render(){
+      lista.querySelectorAll('.data').forEach(e=>e.remove());
+      sinais.forEach(s=>{
+        const row = document.createElement('div'); row.className='line data';
+        row.innerHTML = `
+          <div>${s.ativo}</div>
+          <div class="${s.direcao==='COMPRA'?'buy':'sell'}"><b>${s.direcao}</b></div>
+          <div>${s.forca}%</div>
+          <div>
+            <div class="small"><span class="tleft" data-id="${s.id}">--:--</span> restantes</div>
+            <div class="bar"><i id="bar-${s.id}"></i></div>
+          </div>
+          <div class="right">
+            <button class="btn" id="btn-${s.id}">Aplicar</button>
+            <div class="small muted" id="msg-${s.id}"></div>
+          </div>`;
+        lista.appendChild(row);
+        document.getElementById(`btn-${s.id}`).onclick = ()=>{
+          if(Date.now()>s.expires){ alert('Prazo encerrado (NEGATIVO).'); return;}
+          document.getElementById(`msg-${s.id}`).innerHTML = '<span class="pill">Ordem enviada (demo)</span>';
+        };
+      });
+    }
+
+    function tick(){
+      const now = Date.now();
+      sinais.forEach(s=>{
+        const left = Math.max(0, s.expires - now), expired = left<=0;
+        const mm = Math.floor(left/60000), ss = Math.floor((left%60000)/1000);
+        const txt = expired ? 'Expirado' : `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+        const span = document.querySelector(\`.tleft[data-id=\"\${s.id}\"]\`); if(span) span.textContent = txt;
+        const bar = document.getElementById(`bar-${s.id}`); if(bar) bar.style.width = (expired?0:(left/SIGNAL_WINDOW_MS*100))+'%';
+        const btn = document.getElementById(`btn-${s.id}`); const msg = document.getElementById(`msg-${s.id}`);
+        if(btn && msg && expired){ btn.disabled=true; msg.innerHTML='<span style="color:#ff5a5a"><b>Prazo encerrado (NEGATIVO)</b></span>'; }
+      });
+    }
+    render(); setInterval(tick,250);
   </script>
 </body>
 </html>
-
